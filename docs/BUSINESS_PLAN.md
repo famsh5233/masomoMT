@@ -78,7 +78,7 @@ Tanzania alone had 58.6M internet subscriptions in Dec 2025, and smartphone pene
 
 **Secondary (after month 3): B2B seats.** Tuition centres, private schools, hotels and tour
 companies buy seats for staff or students. Suggested price: TSh 5,000 per seat per month, minimum
-20 seats. That is one invoice worth about 38 consumer subscriptions.
+20 seats. A 20-seat client pays TSh 100,000 a month, about as much as 12 weekly subscribers.
 
 **Later markets (Section 7):** Nigeria and Ghana (Hausa, Yoruba), Ethiopia (Amharic), francophone
 Africa (French), Mozambique and Angola (Portuguese), South Asia (Hindi, Bengali, Urdu), and
