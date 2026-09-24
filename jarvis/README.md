@@ -29,7 +29,7 @@ cp .env.example .env   # add ANTHROPIC_API_KEY at minimum
 set -a; . ./.env; set +a
 export JARVIS_DB=jarvis.db JARVIS_CONTENT_DIR=content
 
-pytest -q                               # 24 offline tests, no API key needed
+pytest -q                               # 31 offline tests, no API key needed
 python -m jarvis tutor --lang sw        # talk to Mwalimu in the terminal
 python -m jarvis lessons --weeks 1-2    # write lesson packs to content/sw/
 python -m jarvis growth --days 7        # content calendar to ops/marketing/
