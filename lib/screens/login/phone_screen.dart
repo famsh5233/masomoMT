@@ -8,7 +8,7 @@ import '../../theme.dart';
 import '../../widgets/common.dart';
 import 'otp_screen.dart';
 
-const countries = [('TZ', '🇹🇿 Tanzania +255'), ('KE', '🇰🇪 Kenya +254'), ('UG', '🇺🇬 Uganda +256')];
+const countries = [('TZ', 'Tanzania (+255)'), ('KE', 'Kenya (+254)'), ('UG', 'Uganda (+256)')];
 
 class PhoneScreen extends StatefulWidget {
   const PhoneScreen({super.key});

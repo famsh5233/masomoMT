@@ -29,7 +29,7 @@ cp .env.example .env   # add ANTHROPIC_API_KEY at minimum
 set -a; . ./.env; set +a
 export JARVIS_DB=jarvis.db JARVIS_CONTENT_DIR=content
 
-pytest -q                               # 15 offline tests, no API key needed
+pytest -q                               # 24 offline tests, no API key needed
 python -m jarvis tutor --lang sw        # talk to Mwalimu in the terminal
 python -m jarvis lessons --weeks 1-2    # write lesson packs to content/sw/
 python -m jarvis growth --days 7        # content calendar to ops/marketing/
@@ -50,26 +50,42 @@ uvicorn jarvis.server:app --reload      # API on :8000, docs at /docs
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/v1/users` | `{phone, name, native_lang, country, level}` returns `{user_id, token}`. Add SMS OTP before launch. |
-| GET | `/v1/me` | Pro status and conversations left today |
-| POST | `/v1/tutor/chat` | `{message, scenario}` returns `{reply, corrected, mistakes[], tip, score, level, turns_left}`. **429** with `upgrade: true` when the daily limit is reached |
-| GET | `/v1/lessons/{week}` | Week 1 is free. Later weeks return **402** without Pro |
+| POST | `/v1/auth/start` | `{phone, country}` sends a 6-digit SMS code. Numbers are limited to the countries in `JARVIS_OTP_COUNTRIES`, with at most 3 codes per hour. **429** when the limit is hit |
+| POST | `/v1/auth/verify` | `{phone, country, code}` returns `{token, user_id, is_new}`. Each code works once, with 5 tries; logging in again replaces the previous token |
+| POST | `/v1/auth/logout` | Invalidates the token |
+| GET / PATCH | `/v1/me` | Profile, Pro status and conversations left today. PATCH changes `name`, `native_lang` and `level` |
+| POST | `/v1/tutor/chat` | `{message, scenario}` returns `{reply, corrected, mistakes[], tip, score, level, turns_left}`. **429** `daily_limit` when today's limit is used up |
+| GET | `/v1/lessons` | The 12 weeks, with `title`, `published` and `locked` |
+| GET | `/v1/lessons/{week}` | Week 1 is free; later weeks return **402** without Pro. Weeks 1–2 ship with the server (`seed_content/`); later weeks come from `jarvis lessons` |
+| GET | `/v1/videos`, `/v1/videos/{week}` | Existing Masomo videos from the old masomo.co.tz API, with the same Pro rule |
+| GET | `/v1/catalog` | Plans, languages and scenarios |
 | POST | `/v1/pay/mobile` | `{plan: tz_week\|tz_month\|tz_quarter, provider: mpesa\|mixx\|airtel\|halopesa\|azampesa, phone}` |
-| GET | `/v1/pay/status/{id}` | Poll after checkout |
+| GET | `/v1/pay/status/{id}` | The app polls this after checkout |
 | POST | `/v1/pay/azampay/callback?key=…` | AzamPay calls this |
-| POST | `/v1/pay/play/verify` | `{purchase_token}` after Play Billing purchase |
+| POST | `/v1/pay/play/verify` | `{purchase_token}` after a Google Play purchase |
 | POST | `/v1/support` | `{message}` |
-| GET | `/v1/catalog` | Plans, languages, scenarios |
 | GET | `/v1/admin/report` | Header `X-Admin-Key` |
 
-In the app, speech-to-text and text-to-speech stay **on the device**. `speech_to_text` and
-`flutter_tts` are already in `pubspec.yaml`. The server sends and receives text only, which is what
-keeps each conversation turn at a fraction of a cent.
+In the app, speech-to-text and text-to-speech stay **on the device**. The server sends and
+receives text only, which is what keeps each conversation turn at a fraction of a cent.
+
+## Development and testing without real services
+
+- `JARVIS_ENV=dev JARVIS_LLM=demo JARVIS_SMS_PROVIDER=console` gives a rule-based tutor, and login
+  codes are returned as `dev_code` in the API response. The server refuses demo mode unless
+  `JARVIS_ENV=dev`. In production (the default) the console SMS provider returns 503 and never
+  shows a code.
+- `devtools/mock_azampay.py` stands in for AzamPay and the old video API. It accepts a checkout,
+  then calls back like a customer entering their PIN. Numbers ending in 9 decline.
+- `devtools/e2e.sh` starts both, then runs the app's real HTTP client through a whole learner
+  journey: login, tutor, lessons, videos, payment, Pro, support and logout. With `E2E_UI=1` it
+  also clicks through the web build in Chromium and saves screenshots.
 
 ## Before you take real money
 
 - [ ] Run the full AzamPay flow in their sandbox: checkout, PIN prompt, callback, Pro active. Then switch the URLs to production.
 - [ ] Register the callback URL with `?key=` set to `AZAMPAY_CALLBACK_SECRET`.
-- [ ] Add SMS OTP to sign-up so a phone number actually belongs to its user.
-- [ ] Register as a data controller with Tanzania's PDPC and publish a privacy policy (the app records speech).
-- [ ] Set a monthly spend limit on your Anthropic account.
+- [ ] Open an Africa's Talking account and register a sender ID. Set `JARVIS_SMS_PROVIDER=africastalking` and send yourself a login code.
+- [ ] Register as a data controller with Tanzania's PDPC and publish a privacy policy at the URL the app links to (`PRIVACY_URL`; the default is masomo.co.tz/privacy).
+- [ ] Set a monthly spend limit on your Anthropic account. Generate and review lessons 3–12 (`python -m jarvis lessons --weeks 3-12`).
+- [ ] Check that `https://masomo.co.tz/api/week_videos?week=1` still returns the video list, or point `JARVIS_LEGACY_VIDEOS_URL` at the new location.

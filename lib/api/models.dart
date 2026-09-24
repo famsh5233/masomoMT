@@ -107,6 +107,7 @@ class LessonSummary {
   LessonSummary({
     required this.week,
     required this.theme,
+    this.title = '',
     required this.scenario,
     required this.published,
     required this.locked,
@@ -114,13 +115,17 @@ class LessonSummary {
 
   final int week;
   final String theme;
+  final String title; // the lesson's own title (in the learner's language) once published
   final String scenario;
   final bool published;
   final bool locked;
 
+  String get displayTitle => title.isNotEmpty ? title : theme;
+
   factory LessonSummary.fromJson(Map<String, dynamic> j) => LessonSummary(
     week: j['week'] as int,
     theme: (j['theme'] ?? '') as String,
+    title: (j['title'] ?? '') as String,
     scenario: (j['scenario'] ?? 'free_talk') as String,
     published: (j['published'] ?? false) as bool,
     locked: (j['locked'] ?? false) as bool,

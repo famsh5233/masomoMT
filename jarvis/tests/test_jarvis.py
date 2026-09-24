@@ -323,6 +323,7 @@ def test_seed_lessons_and_index(client):
     idx = c.get("/v1/lessons", headers=h).json()["lessons"]
     assert len(idx) == 12 and idx[0]["published"] and idx[1]["published"] and not idx[2]["published"]
     assert idx[0]["locked"] is False and idx[1]["locked"] is True
+    assert idx[0]["title"] == "Jitambulishe kwa Kiingereza" and idx[2]["title"] == idx[2]["theme"]
 
 
 def test_videos_proxy_and_paywall(client):

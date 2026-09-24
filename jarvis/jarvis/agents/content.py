@@ -121,8 +121,8 @@ def load_lesson(content_dir: str, week: int, native_lang: str = "sw") -> dict | 
 def lesson_index(content_dir: str, native_lang: str, free_weeks: int, pro: bool) -> list[dict]:
     out = []
     for week, theme, scenario in CURRICULUM:
-        published = load_lesson(content_dir, week, native_lang) is not None or \
-            load_lesson(content_dir, week, "sw") is not None
-        out.append({"week": week, "theme": theme, "scenario": scenario, "published": published,
+        lesson = load_lesson(content_dir, week, native_lang) or load_lesson(content_dir, week, "sw")
+        out.append({"week": week, "theme": theme, "title": lesson["title"] if lesson else theme,
+                    "scenario": scenario, "published": lesson is not None,
                     "locked": week > free_weeks and not pro})
     return out

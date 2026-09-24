@@ -130,6 +130,10 @@ it is a one-line change.
 | Anthropic API account with a monthly spend limit | Tutor + back-office agents | Usage-based |
 
 ### 4b. App (Flutter): must fix before launch
+
+**Status, 24 Sep 2026:** items 1–7 are done, and item 8's paywall screen is built. The funnel analytics events in item 8 are
+still to do. See the root `README.md` for how to build and test the app.
+
 1. **Migrate to current Flutter 3.x with Dart 3 null safety.** `FlatButton`, `Overflow.visible` and
    SDK `<3.0.0` no longer compile.
 2. **New package ID**, for example `tz.co.masomo.app`. Play rejects `com.example.*`

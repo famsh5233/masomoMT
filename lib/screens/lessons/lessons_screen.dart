@@ -81,7 +81,7 @@ class _LessonsScreenState extends State<LessonsScreen> {
                     ),
                     title: Text(s.week(l.week), style: const TextStyle(fontSize: 13, color: Brand.muted)),
                     subtitle: Text(
-                      l.theme,
+                      l.displayTitle,
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Brand.ink),
                     ),
                     trailing: !l.published

@@ -393,7 +393,13 @@ class _LearnerTurn extends StatelessWidget {
                                   text: m.wrong,
                                   style: const TextStyle(color: Brand.bad, decoration: TextDecoration.lineThrough),
                                 ),
-                                const TextSpan(text: '  →  '),
+                                const WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 6),
+                                    child: Icon(Icons.arrow_forward_rounded, size: 16, color: Brand.muted),
+                                  ),
+                                ),
                                 TextSpan(
                                   text: m.right,
                                   style: const TextStyle(color: Brand.good, fontWeight: FontWeight.w700),
