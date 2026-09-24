@@ -24,7 +24,11 @@ ACTIVE_STATES = {"SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIO
 
 
 class PlayError(Exception):
-    pass
+    """public=True: safe to show the customer. False: Google's reply, for our logs only."""
+
+    def __init__(self, message: str, public: bool = True):
+        super().__init__(message)
+        self.public = public
 
 
 def parse_rfc3339(ts: str) -> datetime:
@@ -54,12 +58,12 @@ class PlayVerifier:
     def verify(self, user_id: int, purchase_token: str) -> dict:
         s = self.settings
         if not (s.play_package_name and s.play_service_account_file) and self.session_factory is _default_session:
-            raise PlayError("Google Play verification is not configured")
+            raise PlayError("Google Play verification is not configured", public=False)
         session = self.session_factory(s)
         base = f"{API}/{s.play_package_name}/purchases/subscriptionsv2/tokens/{purchase_token}"
         r = session.get(base)
         if r.status_code != 200:
-            raise PlayError(f"Play API {r.status_code}: {r.text[:300]}")
+            raise PlayError(f"Play API {r.status_code}: {r.text[:300]}", public=False)
         data = r.json()
         state = data.get("subscriptionState")
         items = data.get("lineItems") or []
@@ -78,5 +82,5 @@ class PlayVerifier:
             ack = session.post(f"{API}/{s.play_package_name}/purchases/subscriptions/"
                                f"{product_id}/tokens/{purchase_token}:acknowledge", json={})
             if ack.status_code not in (200, 204):
-                raise PlayError(f"acknowledge failed {ack.status_code}: {ack.text[:300]}")
+                raise PlayError(f"acknowledge failed {ack.status_code}: {ack.text[:300]}", public=False)
         return {"active": True, "state": state, "plan": plan.code, "expires_at": sub["expires_at"]}

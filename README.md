@@ -38,7 +38,7 @@ for the real tutor.
 
 ```bash
 flutter analyze && flutter test          # 28 app tests: sign-in, tutor, lessons, quiz, payment, account, small screens
-(cd jarvis && pytest -q)                 # 31 server tests, including concurrency and abuse cases
+(cd jarvis && pytest -q)                 # 42 server tests, including endpoint security, concurrency and abuse
 jarvis/devtools/e2e.sh                   # live server + mock AzamPay + the app's real HTTP client
 E2E_UI=1 jarvis/devtools/e2e.sh          # also drives the web build in Chromium, with screenshots
 ```

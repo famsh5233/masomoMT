@@ -25,12 +25,18 @@ from ..config import Settings
 from ..db import DB
 from ..plans import get_plan
 
+MIN_CALLBACK_SECRET_LENGTH = 24
+
 PROVIDERS = {"mpesa": "Mpesa", "tigo": "Tigo", "mixx": "Tigo", "airtel": "Airtel",
              "halopesa": "Halopesa", "azampesa": "Azampesa"}
 
 
 class PaymentError(Exception):
-    pass
+    """public=True: safe to show the customer. False: gateway detail, for our logs only."""
+
+    def __init__(self, message: str, public: bool = True):
+        super().__init__(message)
+        self.public = public
 
 
 def normalize_tz_msisdn(phone: str) -> str:
@@ -57,14 +63,14 @@ class AzamPay:
             return self._token
         s = self.settings
         if not (s.azampay_app_name and s.azampay_client_id and s.azampay_client_secret):
-            raise PaymentError("AzamPay credentials are not configured")
+            raise PaymentError("AzamPay credentials are not configured", public=False)
         r = self.http.post(f"{s.azampay_auth_url}/AppRegistration/GenerateToken", json={
             "appName": s.azampay_app_name, "clientId": s.azampay_client_id,
             "clientSecret": s.azampay_client_secret})
         r.raise_for_status()
         token = (r.json().get("data") or {}).get("accessToken")
         if not token:
-            raise PaymentError(f"AzamPay auth failed: {r.text[:300]}")
+            raise PaymentError(f"AzamPay auth failed: {r.text[:300]}", public=False)
         self._token, self._token_exp = token, time.time() + 50 * 60
         return token
 
@@ -89,10 +95,10 @@ class AzamPay:
                       "externalId": external_id, "provider": prov})
             body = r.json() if r.content else {}
             if r.status_code >= 400 or not body.get("success", False):
-                raise PaymentError(f"checkout rejected ({r.status_code}): {str(body)[:300]}")
+                raise PaymentError(f"checkout rejected ({r.status_code}): {str(body)[:300]}", public=False)
         except (httpx.HTTPError, PaymentError, ValueError) as e:
             self.db.update_payment(external_id, "failed", detail=str(e)[:500])
-            raise PaymentError(str(e)) from e
+            raise PaymentError(str(e), public=False) from e
         # Only attach the reference: the callback may already have marked it paid.
         self.db.set_provider_ref(external_id, body.get("transactionId"))
         return {"external_id": external_id, "status": "pending",
@@ -102,7 +108,8 @@ class AzamPay:
     def handle_callback(self, payload: dict, key: str) -> dict:
         """Idempotent. Returns {"ok": bool, "status": ...}. Never raises on bad input."""
         secret = self.settings.azampay_callback_secret
-        if not secret or not hmac.compare_digest((key or "").encode(), secret.encode()):
+        # A short secret could be guessed and used to fake "paid" callbacks, so it disables callbacks.
+        if len(secret) < MIN_CALLBACK_SECRET_LENGTH or not hmac.compare_digest((key or "").encode(), secret.encode()):
             return {"ok": False, "status": "unauthorized"}
         ref = str(payload.get("utilityref") or payload.get("externalId") or "")
         pay = self.db.payment(ref)

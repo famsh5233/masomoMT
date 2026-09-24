@@ -8,8 +8,9 @@ import sqlite3
 from dataclasses import dataclass
 from functools import lru_cache
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 from .agents import LANGUAGES, LEVELS
@@ -24,6 +25,7 @@ from .payments.azampay import AzamPay, PaymentError
 from .payments.play import PlayError, PlayVerifier
 from .phones import PhoneError, is_valid_mobile, normalize_phone
 from .plans import PLANS
+from .security import BodySizeLimit, SecurityHeaders, mask_phone
 from .sms import SMSError, SMSSender
 from .videos import VideoLibrary, VideoSourceError
 
@@ -54,13 +56,14 @@ class Chat(BaseModel):
 
 
 class MobilePay(BaseModel):
-    plan: str
-    provider: str
-    phone: str
+    plan: str = Field(max_length=32)
+    provider: str = Field(max_length=32)
+    phone: str = Field(max_length=20)
 
 
 class PlayPurchase(BaseModel):
-    purchase_token: str = Field(min_length=10, max_length=1000)
+    # Google's tokens use only these characters; anything else could alter the Google API URL it goes into.
+    purchase_token: str = Field(min_length=10, max_length=1000, pattern=r"^[A-Za-z0-9._-]+$")
 
 
 class SupportMsg(BaseModel):
@@ -89,7 +92,7 @@ def make_llm(settings: Settings) -> LLM:
 
 
 def build_services(settings: Settings, llm: LLM | None = None) -> Services:
-    db = DB(settings.db_path)
+    db = DB(settings.db_path, token_ttl_days=settings.token_ttl_days)
     llm = llm or make_llm(settings)
     return Services(settings, db, llm, TutorService(db, llm, settings), SupportAgent(db, llm, settings),
                     AzamPay(settings, db), PlayVerifier(settings, db), SMSSender(settings),
@@ -101,29 +104,67 @@ def _default_services() -> Services:
     return build_services(get_settings())
 
 
+# Endpoints anyone may call without a login token. Every other route must depend on
+# current_user or admin; tests/test_jarvis.py enforces this for every route in the app.
+PUBLIC_ROUTES = {
+    ("GET", "/health"),                         # uptime checks
+    ("GET", "/v1/catalog"),                     # prices, shown before sign-in
+    ("POST", "/v1/auth/start"),                 # rate-limited per number, per address and per day
+    ("POST", "/v1/auth/verify"),                # 5 guesses per code, rate-limited per address
+    ("POST", "/v1/pay/azampay/callback"),       # AzamPay; needs the callback secret (+ optional IP list)
+}
+
+MIN_ADMIN_KEY_LENGTH = 24
+
+
+def client_ip(request: Request) -> str:
+    # With uvicorn --proxy-headers this is the real client address forwarded by the local reverse proxy.
+    return request.client.host if request.client else "unknown"
+
+
 def create_app(services: Services | None = None) -> FastAPI:
-    app = FastAPI(title="Masomo JARVIS API", version="1.1.0")
+    settings = services.settings if services else get_settings()
+    dev = settings.env == "dev"
+    # The interactive API docs would publish a map of every endpoint, so they exist only in development.
+    app = FastAPI(title="Masomo JARVIS API", version="1.2.0", docs_url="/docs" if dev else None,
+                  redoc_url=None, openapi_url="/openapi.json" if dev else None)
     svc = services or None
-    origins = [o.strip() for o in (services.settings if services else get_settings()).cors_origins.split(",")
-               if o.strip()]
+    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     if origins:
-        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"],
+        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST", "PATCH"],
                            allow_headers=["Authorization", "Content-Type"])
+    hosts = [h.strip() for h in settings.allowed_hosts.split(",") if h.strip()]
+    if hosts:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+    app.add_middleware(SecurityHeaders)
+    app.add_middleware(BodySizeLimit)
 
     def S() -> Services:
         return svc or _default_services()
 
     def current_user(authorization: str = Header(default="")) -> sqlite3.Row:
-        token = authorization.removeprefix("Bearer ").strip()
-        user = S().db.user_by_token(token) if token else None
+        scheme, _, token = authorization.partition(" ")
+        user = S().db.user_by_token(token.strip()) if scheme.lower() == "bearer" and token.strip() else None
         if not user:
-            raise HTTPException(401, "invalid or missing token")
+            raise HTTPException(401, "invalid or missing token", headers={"WWW-Authenticate": "Bearer"})
         return user
 
-    def admin(x_admin_key: str = Header(default="")) -> None:
-        key = S().settings.admin_key
-        if not key or not hmac.compare_digest(x_admin_key.encode(), key.encode()):
+    def admin(request: Request, x_admin_key: str = Header(default="")) -> None:
+        s = S()
+        key = s.settings.admin_key
+        ip = client_ip(request)
+        # A short or unset key disables admin access entirely rather than being guessable.
+        if len(key) < MIN_ADMIN_KEY_LENGTH or not hmac.compare_digest(x_admin_key.encode(), key.encode()):
+            if not s.db.rate_hit(f"admin-fail:{ip}", s.settings.admin_failures_per_ip_per_hour, 3600):
+                raise HTTPException(429, "too many attempts")
+            log.warning("rejected admin request from %s", ip)
             raise HTTPException(403, "admin only")
+
+    def limited(key: str, limit: int, window: int = 3600) -> None:
+        if not S().db.rate_hit(key, limit, window):
+            raise HTTPException(429, {"code": "rate_limited",
+                                      "message_en": "Too many requests. Please try again later.",
+                                      "message_sw": "Maombi mengi mno. Tafadhali jaribu tena baadaye."})
 
     @app.get("/health")
     def health():
@@ -153,7 +194,7 @@ def create_app(services: Services | None = None) -> FastAPI:
                                       "message_sw": "Kuingia kwa SMS bado hakupatikani katika nchi yako."})
         if not is_valid_mobile(phone):
             raise HTTPException(422, "not a mobile number")
-        ip = request.client.host if request.client else "unknown"
+        ip = client_ip(request)
         if not s.db.rate_hit(f"otp-ip:{ip}", s.settings.otp_per_ip_per_hour, 3600):
             raise HTTPException(429, {"code": "too_many_codes",
                                       "message_en": "Too many codes requested. Try again in an hour.",
@@ -169,7 +210,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         try:
             s.sms.send(phone, f"Masomo: namba yako ya kuingia ni {code}. Your login code is {code}.")
         except SMSError as e:
-            log.error("OTP send failed for %s: %s", phone, e)
+            log.error("OTP send failed for %s: %s", mask_phone(phone), e)
             raise HTTPException(503, "could not send SMS, try again later")
         out = {"phone": phone, "sent": True, "expires_in_minutes": s.settings.otp_ttl_minutes}
         if s.settings.env == "dev" and s.settings.sms_provider == "console":
@@ -177,8 +218,9 @@ def create_app(services: Services | None = None) -> FastAPI:
         return out
 
     @app.post("/v1/auth/verify")
-    def auth_verify(body: AuthVerify):
+    def auth_verify(body: AuthVerify, request: Request):
         s = S()
+        limited(f"verify-ip:{client_ip(request)}", s.settings.verify_per_ip_per_hour)
         phone = _phone(body.phone, body.country)
         if not s.db.otp_check(phone, body.code.strip(), s.settings.otp_max_attempts):
             raise HTTPException(401, {"code": "bad_code", "message_en": "Wrong or expired code.",
@@ -221,7 +263,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.post("/v1/auth/logout")
     def logout(user=Depends(current_user)):
-        S().db.rotate_token(user["id"])  # invalidates the current token
+        S().db.revoke_token(user["id"])
         return {"ok": True}
 
     @app.post("/v1/tutor/chat")
@@ -275,13 +317,25 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.post("/v1/pay/mobile")
     def pay_mobile(body: MobilePay, user=Depends(current_user)):
+        s = S()
+        # Each checkout pushes a PIN prompt to a phone; cap it so an account can't be used to spam people.
+        limited(f"checkout:{user['id']}", s.settings.checkouts_per_user_per_hour)
         try:
-            return S().azampay.start_checkout(user["id"], body.plan, body.provider, body.phone)
-        except (PaymentError, ValueError) as e:
+            return s.azampay.start_checkout(user["id"], body.plan, body.provider, body.phone)
+        except PaymentError as e:
+            if e.public:
+                raise HTTPException(400, str(e))
+            log.error("mobile checkout failed for user %s: %s", user["id"], e)
+            raise HTTPException(502, "the payment service is unavailable, please try again")
+        except ValueError as e:  # unknown plan
             raise HTTPException(400, str(e))
 
     @app.post("/v1/pay/azampay/callback")
-    async def azampay_callback(request: Request, key: str = Query(default="")):
+    async def azampay_callback(request: Request, key: str = Query(default="", max_length=200)):
+        allowed_ips = [i.strip() for i in S().settings.azampay_callback_ips.split(",") if i.strip()]
+        if allowed_ips and client_ip(request) not in allowed_ips:
+            log.warning("AzamPay callback from unexpected address %s", client_ip(request))
+            raise HTTPException(403, "forbidden")
         try:
             payload = await request.json()
         except ValueError:
@@ -292,7 +346,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         return result
 
     @app.get("/v1/pay/status/{external_id}")
-    def pay_status(external_id: str, user=Depends(current_user)):
+    def pay_status(external_id: str = Path(max_length=64), user=Depends(current_user)):
         p = S().db.payment(external_id)
         if not p or p["user_id"] != user["id"]:
             raise HTTPException(404, "not found")
@@ -300,9 +354,16 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.post("/v1/pay/play/verify")
     def play_verify(body: PlayPurchase, user=Depends(current_user)):
+        s = S()
+        limited(f"play-verify:{user['id']}", s.settings.play_verifies_per_user_per_hour)
         try:
-            return S().play.verify(user["id"], body.purchase_token)
-        except (PlayError, ValueError) as e:
+            return s.play.verify(user["id"], body.purchase_token)
+        except PlayError as e:
+            if e.public:
+                raise HTTPException(400, str(e))
+            log.error("Play verification failed for user %s: %s", user["id"], e)
+            raise HTTPException(502, "could not confirm the purchase with Google Play, please try again")
+        except ValueError as e:  # product ID with no matching plan
             raise HTTPException(400, str(e))
 
     @app.post("/v1/support")

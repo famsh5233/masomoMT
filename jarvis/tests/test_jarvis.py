@@ -49,6 +49,9 @@ def growth_resp(messages):
             "ads": [{"platform": "meta", "headline": "h", "primary_text": "p", "angle": "job"}] * 3}
 
 
+ADMIN_KEY = "test-admin-key-0123456789abcdef"
+CB_SECRET = "test-callback-secret-0123456789"
+
 FAKE = {"tutor_turn": tutor_resp, "support_reply": support_resp, "lesson": lesson_resp,
         "content_calendar": growth_resp}
 
@@ -56,7 +59,7 @@ FAKE = {"tutor_turn": tutor_resp, "support_reply": support_resp, "lesson": lesso
 @pytest.fixture
 def settings(tmp_path):
     return replace(Settings(), db_path=str(tmp_path / "t.db"), content_dir=str(tmp_path / "content"),
-                   admin_key="adm", azampay_callback_secret="cbsecret", azampay_app_name="app",
+                   admin_key=ADMIN_KEY, azampay_callback_secret=CB_SECRET, azampay_app_name="app",
                    azampay_client_id="id", azampay_client_secret="sec", azampay_api_key="k",
                    free_turns_per_day=2, paid_turns_per_day=5, env="dev", sms_provider="console")
 
@@ -152,8 +155,8 @@ def test_azampay_full_flow(settings):
     cb = {"utilityref": ref, "amount": "7000", "transactionstatus": "success", "reference": "MP123",
           "msisdn": "255754000001", "operator": "Mpesa", "message": "ok"}
     assert az.handle_callback(cb, "wrong")["status"] == "unauthorized"
-    assert az.handle_callback(cb, "cbsecret")["status"] == "success"
-    assert az.handle_callback(cb, "cbsecret")["status"] == "already_processed"
+    assert az.handle_callback(cb, CB_SECRET)["status"] == "success"
+    assert az.handle_callback(cb, CB_SECRET)["status"] == "already_processed"
     sub = db.active_subscription(uid)
     assert sub["plan"] == "tz_month"
     assert len(db.subscriptions()) == 1
@@ -164,11 +167,11 @@ def test_azampay_amount_mismatch_and_failure(settings):
     uid, _ = db.create_user("255754000001")
     az = azampay_with(settings, db, ok_handler)
     ref = az.start_checkout(uid, "tz_month", "mpesa", "0754000001")["external_id"]
-    r = az.handle_callback({"utilityref": ref, "amount": "100", "transactionstatus": "success"}, "cbsecret")
+    r = az.handle_callback({"utilityref": ref, "amount": "100", "transactionstatus": "success"}, CB_SECRET)
     assert r["status"] == "amount_mismatch" and db.active_subscription(uid) is None
     assert len(db.open_escalations()) == 1
     ref2 = az.start_checkout(uid, "tz_week", "mpesa", "0754000001")["external_id"]
-    r = az.handle_callback({"utilityref": ref2, "amount": "2000", "transactionstatus": "failure"}, "cbsecret")
+    r = az.handle_callback({"utilityref": ref2, "amount": "2000", "transactionstatus": "failure"}, CB_SECRET)
     assert r["status"] == "failed" and db.payment(ref2)["status"] == "failed"
 
 
@@ -256,7 +259,7 @@ def test_metrics_math(settings):
 
 def test_admin_report(client):
     c, _ = client
-    r = c.get("/v1/admin/report", headers={"X-Admin-Key": "adm"})
+    r = c.get("/v1/admin/report", headers={"X-Admin-Key": ADMIN_KEY})
     assert r.status_code == 200 and "mrr_usd" in r.json()["metrics"]
 
 
@@ -494,3 +497,140 @@ def test_non_ascii_secrets_do_not_crash(client, settings):
     c, svc = client
     assert c.get("/v1/admin/report", headers={"X-Admin-Key": "ключ".encode()}).status_code == 403
     assert svc.azampay.handle_callback({"utilityref": "x"}, "ключ")["status"] == "unauthorized"
+
+
+# ---------- endpoint security ----------
+
+def _all_routes(app):
+    from fastapi.routing import APIRoute
+    for r in app.routes:
+        if isinstance(r, APIRoute):
+            for m in r.methods:
+                yield m, r.path, r
+
+
+def _fill(path):
+    return path.replace("{week}", "1").replace("{external_id}", "MSMX")
+
+
+def test_every_endpoint_is_public_by_decision_or_requires_auth(client):
+    """Guards future changes: a new route must be added to PUBLIC_ROUTES or require a login."""
+    from jarvis.server import PUBLIC_ROUTES
+    c, _ = client
+    app = c.app
+    routes = list(_all_routes(app))
+    assert routes, "no routes found"
+    for method, path, _ in routes:
+        if (method, path) in PUBLIC_ROUTES:
+            continue
+        url = _fill(path)
+        for headers in ({}, {"Authorization": "Bearer not-a-real-token"}, {"Authorization": "Basic abc"},
+                        {"X-Admin-Key": "wrong"}):
+            r = c.request(method, url, headers=headers, json={})
+            assert r.status_code in (401, 403, 429), f"{method} {path} with {headers} returned {r.status_code}"
+    # And every public route is one we meant to be public.
+    assert {(m, p) for m, p, _ in routes} >= PUBLIC_ROUTES
+
+
+def test_expired_and_revoked_tokens_are_rejected(client, settings):
+    c, svc = client
+    h = signup(c)
+    assert c.get("/v1/me", headers=h).status_code == 200
+    with svc.db.conn() as conn:
+        conn.execute("UPDATE users SET token_expires_at='2020-01-01T00:00:00+00:00'")
+    assert c.get("/v1/me", headers=h).status_code == 401
+    h2 = signup(c, phone="255754000031")
+    c.post("/v1/auth/logout", headers=h2)
+    assert c.get("/v1/me", headers=h2).status_code == 401
+
+
+def test_api_docs_hidden_in_production(settings):
+    prod = TestClient(create_app(build_services(replace(settings, env="prod"), llm=FakeLLM(FAKE))))
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert prod.get(path).status_code == 404
+    dev = TestClient(create_app(build_services(settings, llm=FakeLLM(FAKE))))
+    assert dev.get("/openapi.json").status_code == 200
+
+
+def test_security_headers_and_body_limit(client):
+    c, _ = client
+    r = c.get("/health")
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["cache-control"] == "no-store"
+    assert "max-age" in r.headers["strict-transport-security"]
+    big = c.post("/v1/auth/start", content=b'{"phone":"' + b"1" * 70_000 + b'"}',
+                 headers={"Content-Type": "application/json"})
+    assert big.status_code == 413
+
+    def chunks():
+        yield b'{"phone":"'
+        for _ in range(100):
+            yield b"1" * 1000
+        yield b'"}'
+
+    streamed = c.post("/v1/auth/start", content=chunks(), headers={"Content-Type": "application/json"})
+    assert streamed.status_code == 413
+
+
+def test_checkout_rate_limited_and_gateway_errors_not_leaked(client, settings):
+    c, svc = client
+    h = signup(c)
+
+    def gateway_down(request):
+        if request.url.path.endswith("GenerateToken"):
+            return httpx.Response(200, json={"data": {"accessToken": "tok"}})
+        return httpx.Response(500, json={"success": False, "message": "INTERNAL-GATEWAY-SECRET-DETAIL"})
+
+    svc.azampay.http = httpx.Client(transport=httpx.MockTransport(gateway_down))
+    body = {"plan": "tz_week", "provider": "mpesa", "phone": "0754000001"}
+    r = c.post("/v1/pay/mobile", json=body, headers=h)
+    assert r.status_code == 502 and "INTERNAL-GATEWAY" not in r.text
+    for _ in range(settings.checkouts_per_user_per_hour - 1):
+        c.post("/v1/pay/mobile", json=body, headers=h)
+    assert c.post("/v1/pay/mobile", json=body, headers=h).status_code == 429
+    # A customer mistake is still explained.
+    h2 = signup(c, phone="255754000032")
+    bad = c.post("/v1/pay/mobile", json={**body, "phone": "12345"}, headers=h2)
+    assert bad.status_code == 400 and "mobile number" in bad.text
+
+
+def test_play_token_cannot_alter_the_google_url(client):
+    c, _ = client
+    h = signup(c)
+    for token in ("abc/../../edits", "abcdefghij?x=1", "abcdefghij#frag", "abcdefgh ij"):
+        assert c.post("/v1/pay/play/verify", json={"purchase_token": token}, headers=h).status_code == 422
+
+
+def test_verify_attempts_limited_per_address(client, settings):
+    c, _ = client
+    codes = [c.post("/v1/auth/verify", json={"phone": f"07540003{i:02d}", "code": "000000"}).status_code
+             for i in range(settings.verify_per_ip_per_hour + 1)]
+    assert set(codes[:-1]) == {401} and codes[-1] == 429
+
+
+def test_admin_needs_a_long_key_and_blocks_guessing(settings):
+    weak = TestClient(create_app(build_services(replace(settings, admin_key="short"), llm=FakeLLM(FAKE))))
+    assert weak.get("/v1/admin/report", headers={"X-Admin-Key": "short"}).status_code == 403
+    c = TestClient(create_app(build_services(settings, llm=FakeLLM(FAKE))))
+    statuses = [c.get("/v1/admin/report", headers={"X-Admin-Key": f"guess{i}"}).status_code
+                for i in range(settings.admin_failures_per_ip_per_hour + 1)]
+    assert statuses[-1] == 429
+
+
+def test_callback_ip_allowlist(settings):
+    svc = build_services(replace(settings, azampay_callback_ips="196.0.0.1"), llm=FakeLLM(FAKE))
+    c = TestClient(create_app(svc))
+    r = c.post(f"/v1/pay/azampay/callback?key={CB_SECRET}", json={"utilityref": "x", "transactionstatus": "success"})
+    assert r.status_code == 403
+
+
+def test_unknown_host_rejected_when_hosts_configured(settings):
+    c = TestClient(create_app(build_services(replace(settings, allowed_hosts="api.masomo.co.tz"), llm=FakeLLM(FAKE))))
+    assert c.get("/health").status_code == 400
+    assert c.get("/health", headers={"Host": "api.masomo.co.tz"}).status_code == 200
+
+
+def test_short_callback_secret_disables_callbacks(settings):
+    db = DB(settings.db_path)
+    az = AzamPay(replace(settings, azampay_callback_secret="short"), db)
+    assert az.handle_callback({"utilityref": "x", "transactionstatus": "success"}, "short")["status"] == "unauthorized"

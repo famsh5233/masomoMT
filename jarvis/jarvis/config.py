@@ -50,6 +50,15 @@ class Settings:
     otp_per_ip_per_hour: int = field(default_factory=lambda: _int("JARVIS_OTP_PER_IP_HOUR", 10))
     otp_daily_cap: int = field(default_factory=lambda: _int("JARVIS_OTP_DAILY_CAP", 1000))
     support_per_day: int = field(default_factory=lambda: _int("JARVIS_SUPPORT_PER_DAY", 20))
+    # More abuse guards.
+    verify_per_ip_per_hour: int = field(default_factory=lambda: _int("JARVIS_VERIFY_PER_IP_HOUR", 30))
+    checkouts_per_user_per_hour: int = field(default_factory=lambda: _int("JARVIS_CHECKOUTS_PER_HOUR", 5))
+    play_verifies_per_user_per_hour: int = field(default_factory=lambda: _int("JARVIS_PLAY_VERIFY_PER_HOUR", 20))
+    admin_failures_per_ip_per_hour: int = field(default_factory=lambda: _int("JARVIS_ADMIN_FAILS_PER_HOUR", 10))
+    # Login tokens stop working after this many days; the app then asks for a new SMS code.
+    token_ttl_days: int = field(default_factory=lambda: _int("JARVIS_TOKEN_TTL_DAYS", 180))
+    # Optional: only accept requests for these host names (comma-separated), e.g. api.masomo.co.tz.
+    allowed_hosts: str = field(default_factory=lambda: os.environ.get("JARVIS_ALLOWED_HOSTS", ""))
     at_username: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_USERNAME", ""))
     at_api_key: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_API_KEY", ""))
     at_sender_id: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_SENDER_ID", ""))
@@ -75,6 +84,8 @@ class Settings:
     # AzamPay callbacks are not signed, so the callback URL registered with
     # AzamPay must carry this secret as ?key=... and we also match amount + reference.
     azampay_callback_secret: str = field(default_factory=lambda: os.environ.get("AZAMPAY_CALLBACK_SECRET", ""))
+    # Optional: AzamPay's callback source addresses (comma-separated). Empty = any address with the secret.
+    azampay_callback_ips: str = field(default_factory=lambda: os.environ.get("AZAMPAY_CALLBACK_IPS", ""))
 
     # --- Google Play (global card / carrier billing) ---
     play_package_name: str = field(default_factory=lambda: os.environ.get("PLAY_PACKAGE_NAME", ""))

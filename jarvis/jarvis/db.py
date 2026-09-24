@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
     country TEXT NOT NULL DEFAULT 'TZ',
     level TEXT NOT NULL DEFAULT 'A2',
     token_hash TEXT NOT NULL,
+    token_expires_at TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -108,10 +109,14 @@ def hash_token(token: str) -> str:
 
 
 class DB:
-    def __init__(self, path: str):
+    def __init__(self, path: str, token_ttl_days: int = 180):
         self.path = path
+        self.token_ttl = timedelta(days=token_ttl_days)
         with self.conn() as c:
             c.executescript(SCHEMA)
+            cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
+            if "token_expires_at" not in cols:  # databases created before tokens expired
+                c.execute("ALTER TABLE users ADD COLUMN token_expires_at TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def conn(self) -> Iterator[sqlite3.Connection]:
@@ -132,22 +137,31 @@ class DB:
                     country: str = "TZ", level: str = "A2") -> tuple[int, str]:
         """Returns (user_id, bearer_token). The token is shown once; only its hash is stored."""
         token = secrets.token_urlsafe(32)
+        now = utcnow()
         with self.conn() as c:
             cur = c.execute(
-                "INSERT INTO users(phone,name,native_lang,country,level,token_hash,created_at)"
-                " VALUES(?,?,?,?,?,?,?)",
-                (phone, name, native_lang, country, level, hash_token(token), iso(utcnow())))
+                "INSERT INTO users(phone,name,native_lang,country,level,token_hash,token_expires_at,created_at)"
+                " VALUES(?,?,?,?,?,?,?,?)",
+                (phone, name, native_lang, country, level, hash_token(token), iso(now + self.token_ttl), iso(now)))
             return cur.lastrowid, token
 
     def rotate_token(self, user_id: int) -> str:
+        """Issues a new token; the previous one stops working immediately."""
         token = secrets.token_urlsafe(32)
         with self.conn() as c:
-            c.execute("UPDATE users SET token_hash=? WHERE id=?", (hash_token(token), user_id))
+            c.execute("UPDATE users SET token_hash=?, token_expires_at=? WHERE id=?",
+                      (hash_token(token), iso(utcnow() + self.token_ttl), user_id))
         return token
 
-    def user_by_token(self, token: str) -> sqlite3.Row | None:
+    def revoke_token(self, user_id: int) -> None:
         with self.conn() as c:
-            return c.execute("SELECT * FROM users WHERE token_hash=?", (hash_token(token),)).fetchone()
+            c.execute("UPDATE users SET token_hash=?, token_expires_at='' WHERE id=?",
+                      ("revoked:" + secrets.token_hex(16), user_id))
+
+    def user_by_token(self, token: str, now: datetime | None = None) -> sqlite3.Row | None:
+        with self.conn() as c:
+            return c.execute("SELECT * FROM users WHERE token_hash=? AND token_expires_at>?",
+                             (hash_token(token), iso(now or utcnow()))).fetchone()
 
     def user_by_phone(self, phone: str) -> sqlite3.Row | None:
         with self.conn() as c:

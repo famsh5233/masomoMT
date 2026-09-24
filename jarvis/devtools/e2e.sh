@@ -8,7 +8,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK="${E2E_WORK:-$(mktemp -d)}"
 PY="${PYTHON:-python3}"
-SECRET="e2e-callback-secret"
+SECRET="e2e-callback-secret-0123456789"
 API_PORT=8765 MOCK_PORT=8766 WEB_PORT=8080
 pids=()
 cleanup() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; }
@@ -23,7 +23,7 @@ pids+=($!)
 (
   cd "$ROOT/jarvis"
   JARVIS_ENV=dev JARVIS_LLM=demo JARVIS_SMS_PROVIDER=console \
-  JARVIS_DB="$WORK/e2e.db" JARVIS_CONTENT_DIR="$WORK/content" JARVIS_ADMIN_KEY=e2e-admin \
+  JARVIS_DB="$WORK/e2e.db" JARVIS_CONTENT_DIR="$WORK/content" JARVIS_ADMIN_KEY=e2e-admin-key-0123456789abcdef \
   JARVIS_CORS_ORIGINS="http://127.0.0.1:$WEB_PORT" \
   JARVIS_LEGACY_VIDEOS_URL="http://127.0.0.1:$MOCK_PORT/api/week_videos?week={week}" \
   AZAMPAY_APP_NAME=masomo AZAMPAY_CLIENT_ID=id AZAMPAY_CLIENT_SECRET=secret AZAMPAY_API_KEY=key \
@@ -40,7 +40,7 @@ echo "== API journey (Flutter HTTP client -> JARVIS -> mock AzamPay)"
 (cd "$ROOT" && NO_PROXY='*' LIVE_API="http://127.0.0.1:$API_PORT" flutter test test_live)
 
 echo "== Admin report"
-curl -s --noproxy '*' -H "X-Admin-Key: e2e-admin" "http://127.0.0.1:$API_PORT/v1/admin/report" ; echo
+curl -s --noproxy '*' -H "X-Admin-Key: e2e-admin-key-0123456789abcdef" "http://127.0.0.1:$API_PORT/v1/admin/report" ; echo
 
 if [[ "${E2E_UI:-0}" == "1" ]]; then
   echo "== Browser test (web build in Chromium)"

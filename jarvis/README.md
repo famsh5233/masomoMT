@@ -29,7 +29,7 @@ cp .env.example .env   # add ANTHROPIC_API_KEY at minimum
 set -a; . ./.env; set +a
 export JARVIS_DB=jarvis.db JARVIS_CONTENT_DIR=content
 
-pytest -q                               # 31 offline tests, no API key needed
+pytest -q                               # 42 offline tests, no API key needed
 python -m jarvis tutor --lang sw        # talk to Mwalimu in the terminal
 python -m jarvis lessons --weeks 1-2    # write lesson packs to content/sw/
 python -m jarvis growth --days 7        # content calendar to ops/marketing/
@@ -68,6 +68,39 @@ uvicorn jarvis.server:app --reload      # API on :8000, docs at /docs
 
 In the app, speech-to-text and text-to-speech stay **on the device**. The server sends and
 receives text only, which is what keeps each conversation turn at a fraction of a cent.
+
+## Security
+
+Every endpoint either requires a login token or is one of five public endpoints listed in
+`PUBLIC_ROUTES` in `server.py`. A test (`test_every_endpoint_is_public_by_decision_or_requires_auth`)
+calls every route with no token, a fake token and a wrong admin key, and fails if any is let through.
+A new endpoint therefore has to either require a login or be added to the public list on purpose.
+
+| Endpoint | Who can call it | Protections |
+|---|---|---|
+| `GET /health`, `GET /v1/catalog` | Anyone | No personal data |
+| `POST /v1/auth/start` | Anyone | Allowed countries and real mobile formats only. 3 codes per number per hour, 10 per client address per hour, 1,000 per day in total |
+| `POST /v1/auth/verify` | Anyone | 6-digit code, used once, 10-minute expiry, 5 guesses (checked atomically), 30 tries per address per hour |
+| `POST /v1/pay/azampay/callback` | AzamPay | Secret of 24+ characters in the URL, optional list of AzamPay addresses, amount must match, each payment processed once |
+| `/v1/me`, tutor, lessons, videos, support, payments | Signed-in user | Bearer token, stored hashed, expires after 180 days, revoked on logout and on a new login. A user can only see their own payments. Pro content checked on the server. Limits on tutor turns, support messages (20/day), checkouts (5/hour) and Play checks (20/hour) |
+| `GET /v1/admin/report` | You | `X-Admin-Key` of 24+ characters (shorter keys turn admin off); 10 wrong keys per address per hour, then blocked |
+
+Protections on every request:
+- Request bodies over 64 KB are refused.
+- Security headers: `nosniff`, `no-store`, HSTS, `frame-ancestors 'none'`.
+- The interactive API docs (`/docs`, `/openapi.json`) exist only when `JARVIS_ENV=dev`.
+- Payment-gateway and Google errors are logged, never returned to the caller.
+- Phone numbers are masked in logs.
+- There is no access log, so the callback secret is never written to disk.
+- `JARVIS_ALLOWED_HOSTS` rejects requests for any other host name.
+
+Deployment rules:
+- Put HTTPS in front (Caddy or nginx) and keep the container bound to `127.0.0.1`.
+- Leave `FORWARDED_ALLOW_IPS` pointing at that proxy. Otherwise every visitor looks like the same
+  address, and the per-address limits would lock everyone out at once.
+
+**Outside this server:** the old `masomo.co.tz/api/week_videos` endpoint needs no login. Lock it
+down (see the checklist below), or Pro videos can be downloaded for free.
 
 ## Development and testing without real services
 
