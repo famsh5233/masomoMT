@@ -1,0 +1,229 @@
+{
+  "week": 2,
+  "theme": "Talking about your work and daily routine",
+  "scenario": "free_talk",
+  "native_lang": "sw",
+  "level": "A2",
+  "title": "Kazi yangu na ratiba ya kila siku",
+  "objectives": [
+    "Kueleza kazi yako na majukumu yako",
+    "Kueleza ratiba yako ya kila siku kwa kutumia muda",
+    "Kutumia Present Simple kwa usahihi, hasa -s kwa he/she/it",
+    "Kuuliza wengine kuhusu siku yao"
+  ],
+  "vocabulary": [
+    {
+      "word": "wake up",
+      "meaning": "kuamka",
+      "example": "I wake up at 5:30 every morning."
+    },
+    {
+      "word": "get to work",
+      "meaning": "kufika kazini",
+      "example": "I get to work at 7 o'clock."
+    },
+    {
+      "word": "customer",
+      "meaning": "mteja",
+      "example": "I help customers in the shop."
+    },
+    {
+      "word": "manager",
+      "meaning": "meneja / msimamizi",
+      "example": "My manager is very kind."
+    },
+    {
+      "word": "shift",
+      "meaning": "zamu ya kazi",
+      "example": "I work the night shift on Fridays."
+    },
+    {
+      "word": "busy",
+      "meaning": "-enye shughuli nyingi",
+      "example": "Mondays are very busy."
+    },
+    {
+      "word": "usually",
+      "meaning": "kwa kawaida",
+      "example": "I usually eat lunch at 1 pm."
+    },
+    {
+      "word": "always",
+      "meaning": "kila mara / daima",
+      "example": "I always check my messages in the morning."
+    },
+    {
+      "word": "sometimes",
+      "meaning": "wakati mwingine",
+      "example": "Sometimes I work on Sunday."
+    },
+    {
+      "word": "finish",
+      "meaning": "kumaliza",
+      "example": "I finish work at 5 pm."
+    },
+    {
+      "word": "salary",
+      "meaning": "mshahara",
+      "example": "We get our salary at the end of the month."
+    },
+    {
+      "word": "colleague",
+      "meaning": "mfanyakazi mwenzako",
+      "example": "My colleagues are friendly."
+    }
+  ],
+  "phrases": [
+    {
+      "english": "I work as a ... at ...",
+      "meaning": "Ninafanya kazi kama ... katika ..."
+    },
+    {
+      "english": "I am responsible for ...",
+      "meaning": "Ninawajibika kwa ... / Kazi yangu ni ..."
+    },
+    {
+      "english": "What time do you start work?",
+      "meaning": "Unaanza kazi saa ngapi?"
+    },
+    {
+      "english": "What does a normal day look like for you?",
+      "meaning": "Siku yako ya kawaida inakuwaje?"
+    },
+    {
+      "english": "I really enjoy ...",
+      "meaning": "Ninafurahia sana ..."
+    },
+    {
+      "english": "The hardest part of my job is ...",
+      "meaning": "Sehemu ngumu zaidi ya kazi yangu ni ..."
+    },
+    {
+      "english": "After work, I usually ...",
+      "meaning": "Baada ya kazi, kwa kawaida mimi ..."
+    }
+  ],
+  "dialogue": [
+    {
+      "speaker": "Neema",
+      "line": "Hi Baraka! What do you do?"
+    },
+    {
+      "speaker": "Baraka",
+      "line": "I work as a cashier at a supermarket in Arusha."
+    },
+    {
+      "speaker": "Neema",
+      "line": "What time do you start work?"
+    },
+    {
+      "speaker": "Baraka",
+      "line": "I usually start at 8 am, but on Saturdays I start at 7."
+    },
+    {
+      "speaker": "Neema",
+      "line": "What does a normal day look like for you?"
+    },
+    {
+      "speaker": "Baraka",
+      "line": "I serve customers, count money and help my manager with stock."
+    },
+    {
+      "speaker": "Neema",
+      "line": "Is it a busy job?"
+    },
+    {
+      "speaker": "Baraka",
+      "line": "Yes, very busy! The hardest part is the long queue at the end of the month."
+    },
+    {
+      "speaker": "Neema",
+      "line": "What do you do after work?"
+    },
+    {
+      "speaker": "Baraka",
+      "line": "I go to the gym, and sometimes I study English on my phone."
+    },
+    {
+      "speaker": "Neema",
+      "line": "That is a good habit. My sister works at a bank. She finishes work at 5."
+    },
+    {
+      "speaker": "Baraka",
+      "line": "Nice! Maybe she can teach me about saving money."
+    }
+  ],
+  "grammar": {
+    "point": "Present Simple: I work, she works",
+    "explanation": "Tunatumia Present Simple kwa mambo tunayofanya kila siku au mara kwa mara. Kwa I/you/we/they kitenzi hakibadiliki: 'I work'. Kwa he/she/it tunaongeza -s au -es: 'she works', 'he goes', 'it finishes'. Kwa maswali tunatumia 'do/does': 'Do you work?', 'Does she work?'. Maneno kama always, usually, sometimes hukaa kabla ya kitenzi.",
+    "examples": [
+      "I start work at 8 am.",
+      "My brother drives a bajaji.",
+      "She usually finishes work at 5 pm.",
+      "Do you work on Sundays?",
+      "He doesn't work at night."
+    ]
+  },
+  "speaking_tasks": [
+    "Eleza kazi yako kwa sentensi 3 ukitumia 'I work as...' na 'I am responsible for...'.",
+    "Eleza siku yako ya jana kuanzia unapoamka hadi unapolala, ukitumia muda (at 6 am, at noon...).",
+    "Eleza kazi ya mtu wa familia yako ukitumia he/she na -s: 'My mother sells...'.",
+    "Muulize Mwalimu maswali 3 kuhusu ratiba yake ya kila siku."
+  ],
+  "quiz": [
+    {
+      "question": "Complete: She ___ at a bank.",
+      "options": [
+        "work",
+        "works",
+        "working"
+      ],
+      "answer_index": 1
+    },
+    {
+      "question": "Which sentence is correct?",
+      "options": [
+        "He go to work by bus.",
+        "He goes to work by bus.",
+        "He going to work by bus."
+      ],
+      "answer_index": 1
+    },
+    {
+      "question": "Choose the correct question.",
+      "options": [
+        "What time you start work?",
+        "What time do you start work?",
+        "What time does you start work?"
+      ],
+      "answer_index": 1
+    },
+    {
+      "question": "What does 'colleague' mean?",
+      "options": [
+        "mteja",
+        "mfanyakazi mwenzako",
+        "meneja"
+      ],
+      "answer_index": 1
+    },
+    {
+      "question": "Choose the correct sentence.",
+      "options": [
+        "I eat usually lunch at 1 pm.",
+        "I usually eat lunch at 1 pm.",
+        "Usually I lunch eat at 1 pm."
+      ],
+      "answer_index": 1
+    },
+    {
+      "question": "Complete: ___ your manager work on Saturday?",
+      "options": [
+        "Do",
+        "Does",
+        "Is"
+      ],
+      "answer_index": 1
+    }
+  ]
+}

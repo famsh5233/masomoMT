@@ -1,0 +1,77 @@
+{
+  "week": 1,
+  "theme": "Introducing yourself and small talk",
+  "scenario": "free_talk",
+  "native_lang": "sw",
+  "level": "A2",
+  "title": "Jitambulishe kwa Kiingereza",
+  "objectives": [
+    "Kujitambulisha: jina, unapotoka, na kazi yako",
+    "Kuuliza na kujibu maswali rahisi ya mazungumzo",
+    "Kutumia 'I am', 'I live in' na 'I work as' kwa usahihi",
+    "Kumaliza mazungumzo kwa adabu"
+  ],
+  "vocabulary": [
+    {"word": "name", "meaning": "jina", "example": "My name is Asha."},
+    {"word": "from", "meaning": "kutoka", "example": "I am from Mwanza."},
+    {"word": "live", "meaning": "kuishi", "example": "I live in Dar es Salaam."},
+    {"word": "work", "meaning": "kufanya kazi", "example": "I work in a hotel."},
+    {"word": "job", "meaning": "kazi / ajira", "example": "What is your job?"},
+    {"word": "student", "meaning": "mwanafunzi", "example": "I am a student at the university."},
+    {"word": "family", "meaning": "familia", "example": "I have a big family."},
+    {"word": "hobby", "meaning": "kitu unachopenda kufanya wakati wa mapumziko", "example": "My hobby is playing football."},
+    {"word": "nice", "meaning": "-zuri / -a kupendeza", "example": "Nice to meet you."},
+    {"word": "meet", "meaning": "kukutana", "example": "It is good to meet you."},
+    {"word": "weekend", "meaning": "mwisho wa wiki (Jumamosi na Jumapili)", "example": "What do you do at the weekend?"},
+    {"word": "age", "meaning": "umri", "example": "I am 24 years old."}
+  ],
+  "phrases": [
+    {"english": "Hello, my name is ...", "meaning": "Habari, jina langu ni ..."},
+    {"english": "Nice to meet you.", "meaning": "Nimefurahi kukutana nawe."},
+    {"english": "Where are you from?", "meaning": "Unatoka wapi?"},
+    {"english": "What do you do?", "meaning": "Unafanya kazi gani?"},
+    {"english": "How long have you lived here?", "meaning": "Umeishi hapa kwa muda gani?"},
+    {"english": "What do you like to do in your free time?", "meaning": "Unapenda kufanya nini wakati wa mapumziko?"},
+    {"english": "It was nice talking to you.", "meaning": "Nimefurahi kuongea nawe."},
+    {"english": "See you later!", "meaning": "Tutaonana baadaye!"}
+  ],
+  "dialogue": [
+    {"speaker": "Juma", "line": "Hello! My name is Juma. What is your name?"},
+    {"speaker": "Asha", "line": "Hi Juma, I am Asha. Nice to meet you."},
+    {"speaker": "Juma", "line": "Nice to meet you too. Where are you from?"},
+    {"speaker": "Asha", "line": "I am from Mwanza, but I live in Dar es Salaam now."},
+    {"speaker": "Juma", "line": "Oh, nice. What do you do?"},
+    {"speaker": "Asha", "line": "I work as a receptionist at a hotel in Posta. And you?"},
+    {"speaker": "Juma", "line": "I am a student. I study accounting at the university."},
+    {"speaker": "Asha", "line": "That is great! What do you like to do at the weekend?"},
+    {"speaker": "Juma", "line": "I play football with my friends. What about you?"},
+    {"speaker": "Asha", "line": "I like cooking and watching films with my family."},
+    {"speaker": "Juma", "line": "It was nice talking to you, Asha."},
+    {"speaker": "Asha", "line": "You too, Juma. See you later!"}
+  ],
+  "grammar": {
+    "point": "The verb 'to be': I am, you are, he/she is",
+    "explanation": "Tunatumia 'am, is, are' kueleza sisi ni nani, tunatoka wapi, na hali yetu. 'I' huenda na 'am', 'he/she/it' huenda na 'is', na 'you/we/they' huenda na 'are'. Usiseme 'I student'; sema 'I am a student'. Pia kwa umri tunasema 'I am 24 years old', si 'I have 24 years'.",
+    "examples": [
+      "I am a teacher.",
+      "She is from Arusha.",
+      "We are happy to meet you.",
+      "They are students at the same college.",
+      "I am 24 years old."
+    ]
+  },
+  "speaking_tasks": [
+    "Jitambulishe kwa sentensi 4: jina lako, unapotoka, unapoishi, na kazi yako.",
+    "Muulize Mwalimu maswali 3 kuhusu yeye: unatoka wapi, unafanya kazi gani, unapenda kufanya nini.",
+    "Eleza unachofanya mwisho wa wiki kwa sentensi 3.",
+    "Maliza mazungumzo kwa adabu ukitumia 'It was nice talking to you.'"
+  ],
+  "quiz": [
+    {"question": "Choose the correct sentence.", "options": ["I student.", "I am a student.", "I is a student."], "answer_index": 1},
+    {"question": "How do you say 'Unatoka wapi?' in English?", "options": ["Where do you live?", "Where are you from?", "What do you do?"], "answer_index": 1},
+    {"question": "Choose the correct way to say your age.", "options": ["I have 24 years.", "I am 24 years.", "I am 24 years old."], "answer_index": 2},
+    {"question": "Someone says 'Nice to meet you.' What do you answer?", "options": ["Nice to meet you too.", "I am fine.", "See you tomorrow."], "answer_index": 0},
+    {"question": "Complete: She ___ from Dodoma.", "options": ["am", "is", "are"], "answer_index": 1},
+    {"question": "Which question asks about someone's job?", "options": ["What do you do?", "How old are you?", "Where do you live?"], "answer_index": 0}
+  ]
+}

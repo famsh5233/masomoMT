@@ -58,7 +58,7 @@ def settings(tmp_path):
     return replace(Settings(), db_path=str(tmp_path / "t.db"), content_dir=str(tmp_path / "content"),
                    admin_key="adm", azampay_callback_secret="cbsecret", azampay_app_name="app",
                    azampay_client_id="id", azampay_client_secret="sec", azampay_api_key="k",
-                   free_turns_per_day=2, paid_turns_per_day=5)
+                   free_turns_per_day=2, paid_turns_per_day=5, env="dev", sms_provider="console")
 
 
 @pytest.fixture
@@ -68,8 +68,10 @@ def client(settings):
 
 
 def signup(c, phone="255754000001"):
-    r = c.post("/v1/users", json={"phone": phone, "name": "Asha"})
-    assert r.status_code == 201, r.text
+    r = c.post("/v1/auth/start", json={"phone": phone})
+    assert r.status_code == 200, r.text
+    r = c.post("/v1/auth/verify", json={"phone": phone, "code": r.json()["dev_code"], "name": "Asha"})
+    assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
@@ -256,3 +258,117 @@ def test_admin_report(client):
     c, _ = client
     r = c.get("/v1/admin/report", headers={"X-Admin-Key": "adm"})
     assert r.status_code == 200 and "mrr_usd" in r.json()["metrics"]
+
+
+def test_otp_login_flow_and_limits(client):
+    c, svc = client
+    r = c.post("/v1/auth/start", json={"phone": "0754 000 002"}).json()
+    assert r["phone"] == "255754000002" and len(r["dev_code"]) == 6
+    assert svc.sms.sent[-1][0] == "255754000002"
+    wrong = "000000" if r["dev_code"] != "000000" else "111111"
+    assert c.post("/v1/auth/verify", json={"phone": "0754000002", "code": wrong}).status_code == 401
+    ok = c.post("/v1/auth/verify", json={"phone": "0754000002", "code": r["dev_code"], "name": "Juma"})
+    assert ok.status_code == 200 and ok.json()["is_new"] is True
+    # A code works once only.
+    assert c.post("/v1/auth/verify", json={"phone": "0754000002", "code": r["dev_code"]}).status_code == 401
+    # Logging in again returns the same account with a new token; the old token stops working.
+    old = {"Authorization": f"Bearer {ok.json()['token']}"}
+    code2 = c.post("/v1/auth/start", json={"phone": "0754000002"}).json()["dev_code"]
+    again = c.post("/v1/auth/verify", json={"phone": "0754000002", "code": code2}).json()
+    assert again["is_new"] is False and again["user_id"] == ok.json()["user_id"]
+    assert c.get("/v1/me", headers=old).status_code == 401
+    # Third code in the hour is allowed, the fourth is refused.
+    assert c.post("/v1/auth/start", json={"phone": "0754000002"}).status_code == 200
+    assert c.post("/v1/auth/start", json={"phone": "0754000002"}).status_code == 429
+
+
+def test_otp_brute_force_locked(client):
+    c, _ = client
+    code = c.post("/v1/auth/start", json={"phone": "0754000003"}).json()["dev_code"]
+    wrong = "000000" if code != "000000" else "111111"
+    for _ in range(5):
+        c.post("/v1/auth/verify", json={"phone": "0754000003", "code": wrong})
+    assert c.post("/v1/auth/verify", json={"phone": "0754000003", "code": code}).status_code == 401
+
+
+def test_otp_country_allowlist_and_bad_numbers(client):
+    c, _ = client
+    r = c.post("/v1/auth/start", json={"phone": "+447700900123", "country": "GB"})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "country_not_supported"
+    assert c.post("/v1/auth/start", json={"phone": "12345678"}).status_code == 422
+
+
+def test_console_sms_refused_in_production(settings):
+    svc = build_services(replace(settings, env="prod"), llm=FakeLLM(FAKE))
+    c = TestClient(create_app(svc))
+    r = c.post("/v1/auth/start", json={"phone": "0754000004"})
+    assert r.status_code == 503 and "dev_code" not in r.text
+
+
+def test_profile_update_and_logout(client):
+    c, _ = client
+    h = signup(c)
+    r = c.patch("/v1/me", json={"name": "Asha M", "level": "B1", "native_lang": "sw"}, headers=h)
+    assert r.status_code == 200 and r.json()["level"] == "B1" and r.json()["name"] == "Asha M"
+    assert c.patch("/v1/me", json={"level": "Z9"}, headers=h).status_code == 422
+    assert c.post("/v1/auth/logout", headers=h).status_code == 200
+    assert c.get("/v1/me", headers=h).status_code == 401
+
+
+def test_seed_lessons_and_index(client):
+    c, _ = client
+    h = signup(c)
+    week1 = c.get("/v1/lessons/1", headers=h).json()
+    assert week1["title"] == "Jitambulishe kwa Kiingereza" and len(week1["quiz"]) >= 5
+    idx = c.get("/v1/lessons", headers=h).json()["lessons"]
+    assert len(idx) == 12 and idx[0]["published"] and idx[1]["published"] and not idx[2]["published"]
+    assert idx[0]["locked"] is False and idx[1]["locked"] is True
+
+
+def test_videos_proxy_and_paywall(client):
+    c, svc = client
+    h = signup(c)
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, json=[{"title": "Greetings", "size": "12MB", "url": "https://cdn.example/v1.mp4"},
+                                         {"title": "bad", "url": "javascript:alert(1)"}, "junk"])
+
+    svc.videos.http = httpx.Client(transport=httpx.MockTransport(handler))
+    r = c.get("/v1/videos/1", headers=h).json()
+    assert r["videos"] == [{"title": "Greetings", "size": "12MB", "url": "https://cdn.example/v1.mp4"}]
+    c.get("/v1/videos/1", headers=h)
+    assert len(calls) == 1  # cached
+    assert c.get("/v1/videos/2", headers=h).status_code == 402
+    assert c.get("/v1/videos/99", headers=h).status_code == 404
+    weeks = c.get("/v1/videos", headers=h).json()["weeks"]
+    assert weeks[0] == {"week": 1, "locked": False} and weeks[1]["locked"] is True
+
+    def down(request):
+        return httpx.Response(500)
+
+    svc.videos.http = httpx.Client(transport=httpx.MockTransport(down))
+    svc.videos._cache.clear()
+    assert c.get("/v1/videos/1", headers=h).status_code == 503
+
+
+def test_demo_llm_only_in_dev(settings):
+    from jarvis.server import make_llm
+    with pytest.raises(RuntimeError):
+        make_llm(replace(settings, env="prod", llm_mode="demo"))
+    svc = build_services(replace(settings, llm_mode="demo"))
+    c = TestClient(create_app(svc))
+    h = signup(c)
+    r = c.post("/v1/tutor/chat", json={"message": "she go to market"}, headers=h).json()
+    assert r["corrected"] == "she goes to market" and r["mistakes"][0]["right"] == "she goes"
+
+
+def test_phone_normalization():
+    from jarvis.phones import PhoneError, normalize_phone
+    assert normalize_phone("0712 345 678") == "255712345678"
+    assert normalize_phone("0712345678", "KE") == "254712345678"
+    assert normalize_phone("+1 (415) 555-0100", "US") == "14155550100"
+    assert normalize_phone("00255712345678") == "255712345678"
+    with pytest.raises(PhoneError):
+        normalize_phone("abc")

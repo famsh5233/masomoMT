@@ -33,6 +33,29 @@ class Settings:
     history_turns: int = field(default_factory=lambda: _int("JARVIS_HISTORY_TURNS", 6))
     free_lesson_weeks: int = field(default_factory=lambda: _int("JARVIS_FREE_WEEKS", 1))
 
+    # --- Environment ---
+    # "dev" allows the demo LLM and returns login codes in API responses; never use it in production.
+    env: str = field(default_factory=lambda: os.environ.get("JARVIS_ENV", "prod"))
+    llm_mode: str = field(default_factory=lambda: os.environ.get("JARVIS_LLM", "anthropic"))
+    cors_origins: str = field(default_factory=lambda: os.environ.get("JARVIS_CORS_ORIGINS", ""))
+
+    # --- Login by SMS code ---
+    sms_provider: str = field(default_factory=lambda: os.environ.get("JARVIS_SMS_PROVIDER", "console"))
+    # Only send codes to these country calling codes; protects against SMS-pumping fraud.
+    otp_country_codes: str = field(default_factory=lambda: os.environ.get("JARVIS_OTP_COUNTRIES", "255,254,256"))
+    otp_ttl_minutes: int = field(default_factory=lambda: _int("JARVIS_OTP_TTL_MIN", 10))
+    otp_max_sends_per_hour: int = field(default_factory=lambda: _int("JARVIS_OTP_SENDS_PER_HOUR", 3))
+    otp_max_attempts: int = field(default_factory=lambda: _int("JARVIS_OTP_ATTEMPTS", 5))
+    at_username: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_USERNAME", ""))
+    at_api_key: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_API_KEY", ""))
+    at_sender_id: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_SENDER_ID", ""))
+
+    # --- Existing Masomo video lessons (old masomo.co.tz backend) ---
+    legacy_videos_url: str = field(default_factory=lambda: os.environ.get(
+        "JARVIS_LEGACY_VIDEOS_URL", "https://masomo.co.tz/api/week_videos?week={week}"))
+    video_weeks: int = field(default_factory=lambda: _int("JARVIS_VIDEO_WEEKS", 12))
+    free_video_weeks: int = field(default_factory=lambda: _int("JARVIS_FREE_VIDEO_WEEKS", 1))
+
     # --- Admin ---
     admin_key: str = field(default_factory=lambda: os.environ.get("JARVIS_ADMIN_KEY", ""))
 

@@ -1,4 +1,0 @@
-#Fri Jan 08 12:35:28 EAT 2021
-base.0=D\:\\general\\flutter\\projects\\masomoMT\\build\\app\\intermediates\\transforms\\r8\\release\\0\\classes.dex
-path.0=classes.dex
-renamed.0=classes.dex

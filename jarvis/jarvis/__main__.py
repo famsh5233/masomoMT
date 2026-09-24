@@ -43,11 +43,11 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--out", default="ops")
     d.add_argument("--lessons-per-day", type=int, default=1)
 
-    l = sub.add_parser("lessons", help="generate weekly lesson packs")
-    l.add_argument("--weeks", default=f"1-{len(CURRICULUM)}")
-    l.add_argument("--lang", default="sw")
-    l.add_argument("--level", default="A2")
-    l.add_argument("--overwrite", action="store_true")
+    les = sub.add_parser("lessons", help="generate weekly lesson packs")
+    les.add_argument("--weeks", default=f"1-{len(CURRICULUM)}")
+    les.add_argument("--lang", default="sw")
+    les.add_argument("--level", default="A2")
+    les.add_argument("--overwrite", action="store_true")
 
     g = sub.add_parser("growth", help="generate a marketing content calendar")
     g.add_argument("--days", type=int, default=7)

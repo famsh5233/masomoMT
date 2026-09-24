@@ -105,8 +105,24 @@ class LessonAgent:
         return path
 
 
+# Hand-written lessons that ship with the server, so the free tier works before any
+# lesson has been generated. Generated or edited files in content_dir take precedence.
+SEED_DIR = Path(__file__).resolve().parent.parent / "seed_content"
+
+
 def load_lesson(content_dir: str, week: int, native_lang: str = "sw") -> dict | None:
-    path = Path(content_dir) / native_lang / f"week_{week:02d}.json"
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    name = f"week_{week:02d}.json"
+    for path in (Path(content_dir) / native_lang / name, SEED_DIR / native_lang / name):
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    return None
+
+
+def lesson_index(content_dir: str, native_lang: str, free_weeks: int, pro: bool) -> list[dict]:
+    out = []
+    for week, theme, scenario in CURRICULUM:
+        published = load_lesson(content_dir, week, native_lang) is not None or \
+            load_lesson(content_dir, week, "sw") is not None
+        out.append({"week": week, "theme": theme, "scenario": scenario, "published": published,
+                    "locked": week > free_weeks and not pro})
+    return out

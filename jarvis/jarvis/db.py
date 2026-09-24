@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS usage (
     cost_usd REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, day)
 );
+CREATE TABLE IF NOT EXISTS otps (
+    phone TEXT PRIMARY KEY,
+    code_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    window_start TEXT NOT NULL,
+    sends INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS escalations (
     id INTEGER PRIMARY KEY,
     user_id INTEGER,
@@ -143,6 +151,47 @@ class DB:
     def user(self, user_id: int) -> sqlite3.Row | None:
         with self.conn() as c:
             return c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+
+    def update_profile(self, user_id: int, **fields: str) -> None:
+        allowed = {k: v for k, v in fields.items() if k in ("name", "native_lang", "level", "country") and v is not None}
+        if allowed:
+            cols = ", ".join(f"{k}=?" for k in allowed)
+            with self.conn() as c:
+                c.execute(f"UPDATE users SET {cols} WHERE id=?", (*allowed.values(), user_id))
+
+    # ---------- one-time login codes ----------
+    def otp_issue(self, phone: str, code: str, ttl_minutes: int, max_sends_per_hour: int,
+                  now: datetime | None = None) -> bool:
+        """Stores a new code. Returns False when the phone has hit its hourly send limit."""
+        now = now or utcnow()
+        with self.conn() as c:
+            row = c.execute("SELECT * FROM otps WHERE phone=?", (phone,)).fetchone()
+            window_start, sends = iso(now), 0
+            if row and parse(row["window_start"]) > now - timedelta(hours=1):
+                window_start, sends = row["window_start"], row["sends"]
+            if sends >= max_sends_per_hour:
+                return False
+            c.execute(
+                "INSERT INTO otps(phone,code_hash,expires_at,attempts,window_start,sends) VALUES(?,?,?,0,?,?)"
+                " ON CONFLICT(phone) DO UPDATE SET code_hash=excluded.code_hash, expires_at=excluded.expires_at,"
+                " attempts=0, window_start=excluded.window_start, sends=excluded.sends",
+                (phone, hash_token(f"{phone}:{code}"), iso(now + timedelta(minutes=ttl_minutes)),
+                 window_start, sends + 1))
+            return True
+
+    def otp_check(self, phone: str, code: str, max_attempts: int, now: datetime | None = None) -> bool:
+        """True once per issued code; wrong guesses count towards max_attempts."""
+        now = now or utcnow()
+        with self.conn() as c:
+            row = c.execute("SELECT * FROM otps WHERE phone=?", (phone,)).fetchone()
+            if not row or row["code_hash"] == "" or parse(row["expires_at"]) < now \
+                    or row["attempts"] >= max_attempts:
+                return False
+            if not secrets.compare_digest(row["code_hash"], hash_token(f"{phone}:{code}")):
+                c.execute("UPDATE otps SET attempts=attempts+1 WHERE phone=?", (phone,))
+                return False
+            c.execute("UPDATE otps SET code_hash='' WHERE phone=?", (phone,))
+            return True
 
     def set_level(self, user_id: int, level: str) -> None:
         with self.conn() as c:
