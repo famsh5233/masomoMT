@@ -5,6 +5,10 @@ English and explains each mistake in their own language (Swahili first). The app
 12-week "English for work" course, video lessons, and a Pro plan paid by M-Pesa, Mixx by Yas,
 Airtel Money or HaloPesa (Tanzania) or Google Play (everywhere else).
 
+![Sign-in, tutor, lessons, Pro plans, payment confirmed, account](docs/app-screens.png)
+
+*Screens from the automated browser test: sign-in, the tutor correcting "She go to the market", lessons, Pro plans, M-Pesa payment confirmed, and the account after going Pro.*
+
 | Folder | What it is |
 |---|---|
 | `lib/` | The Flutter app (Android, iOS, web) |
