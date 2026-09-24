@@ -76,6 +76,10 @@ class AzamPay:
         if not prov:
             raise PaymentError(f"unknown provider {provider!r}; valid: {sorted(PROVIDERS)}")
         msisdn = normalize_tz_msisdn(phone)
+        active = self.db.active_subscription(user_id)
+        if active is not None and active["channel"] == "play":
+            # Mobile-money time would run alongside the renewing Play subscription and be wasted.
+            raise PaymentError("Pro is already active through Google Play")
         external_id = self.db.create_payment(user_id, plan.code, prov, msisdn, plan.amount, plan.currency)
         try:
             r = self.http.post(
@@ -98,7 +102,7 @@ class AzamPay:
     def handle_callback(self, payload: dict, key: str) -> dict:
         """Idempotent. Returns {"ok": bool, "status": ...}. Never raises on bad input."""
         secret = self.settings.azampay_callback_secret
-        if not secret or not hmac.compare_digest(key or "", secret):
+        if not secret or not hmac.compare_digest((key or "").encode(), secret.encode()):
             return {"ok": False, "status": "unauthorized"}
         ref = str(payload.get("utilityref") or payload.get("externalId") or "")
         pay = self.db.payment(ref)

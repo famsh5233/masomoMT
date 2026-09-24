@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:masomo/api/api_client.dart';
+import 'package:masomo/api/models.dart';
 import 'package:masomo/app.dart';
 import 'package:masomo/screens/lessons/lesson_screen.dart';
 import 'package:masomo/screens/pay/paywall_screen.dart';
@@ -178,7 +180,7 @@ void main() {
     await tester.tap(find.text('Masomo').last);
     await tester.pumpAndSettle();
     expect(find.text('Theme 1'), findsOneWidget);
-    expect(find.text('Inakuja hivi karibuni'), findsWidgets); // weeks 3-12 not written yet
+    expect(find.text('Wiki 3 · Inakuja hivi karibuni'), findsOneWidget); // weeks 3-12 not written yet
 
     await tester.tap(find.byKey(const Key('lesson-2')));
     await tester.pumpAndSettle();
@@ -275,10 +277,55 @@ void main() {
     expect(find.byKey(const Key('phoneField')), findsOneWidget);
   });
 
+  testWidgets('leaving the tutor tab stops Mwalimu talking, and store purchases are retried', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final voice = FakeVoice();
+    final billing = FakeBilling();
+    await tester.pumpWidget(
+      MasomoApp(
+        api: FakeApi(name: 'Asha'),
+        tokens: MemoryTokenStore('tok-1'),
+        voice: voice,
+        billing: billing,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(billing.restores, 1);
+    final before = voice.speechStops;
+    await tester.tap(find.text('Masomo').last);
+    await tester.pumpAndSettle();
+    expect(voice.speechStops, greaterThan(before));
+  });
+
+  testWidgets('a rejected mobile-money request shows a plain message, not server details', (tester) async {
+    final api = _RejectingApi(name: 'Asha');
+    await launch(tester, api: api);
+    await tester.tap(find.text('Akaunti'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('accountGoPro')));
+    await tester.pumpAndSettle();
+    await scrollTo(tester, find.byKey(const Key('payButton')), PaywallScreen, delta: 300);
+    await tester.tap(find.byKey(const Key('payButton')));
+    await tester.pumpAndSettle();
+    await scrollTo(tester, find.byKey(const Key('payPhone')), PaywallScreen, delta: -300);
+    expect(find.text('Andika namba sahihi ya simu'), findsOneWidget);
+    expect(find.textContaining('mobile number'), findsNothing);
+  });
+
   test('money formatting', () {
     expect(formatMoney(2000, 'TZS'), 'TSh 2,000');
     expect(formatMoney(18000, 'TZS'), 'TSh 18,000');
     expect(formatMoney(4.99, 'USD'), '\$4.99');
     expect(formatMoney(1250000, 'KES'), 'KSh 1,250,000');
   });
+}
+
+class _RejectingApi extends FakeApi {
+  _RejectingApi({super.name});
+
+  @override
+  Future<PaymentStart> payMobile(String plan, String provider, String phone) async =>
+      throw ApiException(400, detail: "not a Tanzanian mobile number: '12'");
 }

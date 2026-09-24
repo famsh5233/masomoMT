@@ -79,15 +79,20 @@ class TutorService:
         text = text.strip()[:600]
         if not text:
             raise ValueError("empty message")
-        if self.turns_left(user_id) <= 0:
+        # Take the turn before calling the model, atomically, so parallel requests can't exceed the limit.
+        if not self.db.reserve_turn(user_id, self.daily_limit(user_id)):
             raise LimitReached()
         user = self.db.user(user_id)
         messages = self.db.history(user_id, self.settings.history_turns)
         messages.append({"role": "user", "content": text})
-        result = self.llm.structured(
-            model=self.settings.tutor_model,
-            system=system_prompt(lang_name(user["native_lang"]), user["level"], scenario),
-            messages=messages, tool_name="tutor_turn", schema=SCHEMA, max_tokens=500)
+        try:
+            result = self.llm.structured(
+                model=self.settings.tutor_model,
+                system=system_prompt(lang_name(user["native_lang"]), user["level"], scenario),
+                messages=messages, tool_name="tutor_turn", schema=SCHEMA, max_tokens=500)
+        except Exception:
+            self.db.refund_turn(user_id)  # a failed call should not cost the learner a turn
+            raise
         data = result.data
         # Persist only after a successful call so history never has a dangling user turn.
         self.db.add_message(user_id, "user", text)

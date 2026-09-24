@@ -21,15 +21,26 @@ abstract class StoreBilling {
   Future<bool> available();
   Future<List<StoreProduct>> products();
   Future<PurchaseOutcome> buy(StoreProduct product);
+
+  /// Sends past purchases to the server again, e.g. one whose verification failed on a bad
+  /// connection. Called once the learner is signed in.
+  Future<void> restore();
+
+  /// Called when a purchase is verified outside [buy] (for example by [restore]).
+  VoidCallback? onVerified;
 }
 
 class NoBilling implements StoreBilling {
+  @override
+  VoidCallback? onVerified;
   @override
   Future<bool> available() async => false;
   @override
   Future<List<StoreProduct>> products() async => const [];
   @override
   Future<PurchaseOutcome> buy(StoreProduct product) async => PurchaseOutcome.failed;
+  @override
+  Future<void> restore() async {}
 }
 
 StoreBilling createBilling(MasomoApi api) {
@@ -44,6 +55,8 @@ class PlayBilling implements StoreBilling {
 
   final MasomoApi api;
   final _iap = InAppPurchase.instance;
+  @override
+  VoidCallback? onVerified;
   late final StreamSubscription<List<PurchaseDetails>> _sub;
   Completer<PurchaseOutcome>? _pending;
 
@@ -70,6 +83,11 @@ class PlayBilling implements StoreBilling {
     return _pending!.future;
   }
 
+  @override
+  Future<void> restore() async {
+    if (await _iap.isAvailable()) await _iap.restorePurchases();
+  }
+
   void _complete(PurchaseOutcome outcome) {
     final c = _pending;
     _pending = null;
@@ -78,9 +96,10 @@ class PlayBilling implements StoreBilling {
 
   Future<void> _onPurchases(List<PurchaseDetails> purchases) async {
     for (final p in purchases) {
+      var finish = true;
       switch (p.status) {
         case PurchaseStatus.pending:
-          break;
+          finish = false;
         case PurchaseStatus.canceled:
           _complete(PurchaseOutcome.cancelled);
         case PurchaseStatus.error:
@@ -88,14 +107,18 @@ class PlayBilling implements StoreBilling {
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
           try {
-            // The server checks the token with Google and turns Pro on.
+            // The server checks the token with Google, turns Pro on and acknowledges it.
             await api.verifyPlayPurchase(p.verificationData.serverVerificationData);
             _complete(PurchaseOutcome.success);
+            onVerified?.call();
           } on ApiException {
+            // Leave it unfinished: restore() retries later, and if it is never verified
+            // Google refunds an unacknowledged purchase after 3 days instead of keeping the money.
+            finish = false;
             _complete(PurchaseOutcome.failed);
           }
       }
-      if (p.pendingCompletePurchase) {
+      if (finish && p.pendingCompletePurchase) {
         await _iap.completePurchase(p);
       }
     }

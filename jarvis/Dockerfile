@@ -6,4 +6,5 @@ COPY jarvis ./jarvis
 ENV JARVIS_DB=/data/jarvis.db JARVIS_CONTENT_DIR=/data/content
 VOLUME /data
 EXPOSE 8000
-CMD ["uvicorn", "jarvis.server:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# No access log: the AzamPay callback URL carries its secret in the query string.
+CMD ["uvicorn", "jarvis.server:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--no-access-log"]

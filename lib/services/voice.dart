@@ -16,6 +16,9 @@ abstract class Voice {
   /// Streams partial text to [onText]; [onDone] gets the final text ('' if nothing was heard).
   Future<void> listen({required void Function(String text) onText, required void Function(String text) onDone});
   Future<void> stopListening();
+
+  /// Stops listening and drops whatever was heard (onDone is not called).
+  Future<void> cancelListening();
   Future<void> speak(String text);
   Future<void> stopSpeaking();
 }
@@ -108,6 +111,15 @@ class DeviceVoice implements Voice {
     await _stt.stop();
     // Some recognisers never send a final result after a manual stop.
     Timer(const Duration(milliseconds: 800), _finish);
+  }
+
+  @override
+  Future<void> cancelListening() async {
+    _onDone = null;
+    _finished = true;
+    try {
+      await _stt.cancel();
+    } catch (_) {}
   }
 
   @override

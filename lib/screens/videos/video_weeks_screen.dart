@@ -51,11 +51,12 @@ class _VideoWeeksScreenState extends State<VideoWeeksScreen> {
           }
           return GridView.builder(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            // Tile height grows with the phone's text size so the label never gets cut off.
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 200,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
-              childAspectRatio: 1.35,
+              mainAxisExtent: 80 + MediaQuery.textScalerOf(context).scale(40),
             ),
             itemCount: snap.data!.length,
             itemBuilder: (_, i) {

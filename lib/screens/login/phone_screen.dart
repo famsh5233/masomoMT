@@ -30,6 +30,7 @@ class _PhoneScreenState extends State<PhoneScreen> {
   }
 
   Future<void> _send() async {
+    if (_busy) return; // the keyboard's "done" key and the button can both fire
     final s = stringsOnce(context);
     final raw = _phone.text.trim();
     if (raw.replaceAll(RegExp(r'\D'), '').length < 9) {
@@ -49,6 +50,7 @@ class _PhoneScreenState extends State<PhoneScreen> {
         ),
       );
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.statusCode == 422 && e.code == null ? s.badPhone : errorMessage(s, e));
     } finally {
       if (mounted) setState(() => _busy = false);

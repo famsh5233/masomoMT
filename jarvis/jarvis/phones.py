@@ -7,8 +7,24 @@ import re
 CALLING_CODES = {"TZ": "255", "KE": "254", "UG": "256", "RW": "250", "NG": "234", "GH": "233"}
 
 
+# Mobile number shapes for countries where we send SMS codes (keeps random digits from costing SMS).
+MOBILE_PATTERNS = {
+    "255": r"255[67]\d{8}",   # Tanzania
+    "254": r"254[17]\d{8}",   # Kenya
+    "256": r"2567\d{8}",      # Uganda
+}
+
+
 class PhoneError(ValueError):
     pass
+
+
+def is_valid_mobile(digits: str) -> bool:
+    """True if the number matches the known mobile format for its country (unknown countries pass)."""
+    for prefix, pattern in MOBILE_PATTERNS.items():
+        if digits.startswith(prefix):
+            return re.fullmatch(pattern, digits) is not None
+    return True
 
 
 def normalize_phone(raw: str, country: str = "TZ") -> str:

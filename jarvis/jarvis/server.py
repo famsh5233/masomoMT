@@ -22,7 +22,7 @@ from .db import DB
 from .llm import LLM, AnthropicLLM, DemoLLM
 from .payments.azampay import AzamPay, PaymentError
 from .payments.play import PlayError, PlayVerifier
-from .phones import PhoneError, normalize_phone
+from .phones import PhoneError, is_valid_mobile, normalize_phone
 from .plans import PLANS
 from .sms import SMSError, SMSSender
 from .videos import VideoLibrary, VideoSourceError
@@ -122,7 +122,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     def admin(x_admin_key: str = Header(default="")) -> None:
         key = S().settings.admin_key
-        if not key or not hmac.compare_digest(x_admin_key, key):
+        if not key or not hmac.compare_digest(x_admin_key.encode(), key.encode()):
             raise HTTPException(403, "admin only")
 
     @app.get("/health")
@@ -143,7 +143,7 @@ def create_app(services: Services | None = None) -> FastAPI:
             raise HTTPException(422, str(e))
 
     @app.post("/v1/auth/start")
-    def auth_start(body: AuthStart):
+    def auth_start(body: AuthStart, request: Request):
         s = S()
         phone = _phone(body.phone, body.country)
         allowed = [c.strip() for c in s.settings.otp_country_codes.split(",") if c.strip()]
@@ -151,6 +151,16 @@ def create_app(services: Services | None = None) -> FastAPI:
             raise HTTPException(422, {"code": "country_not_supported",
                                       "message_en": "Sign-in by SMS is not available in your country yet.",
                                       "message_sw": "Kuingia kwa SMS bado hakupatikani katika nchi yako."})
+        if not is_valid_mobile(phone):
+            raise HTTPException(422, "not a mobile number")
+        ip = request.client.host if request.client else "unknown"
+        if not s.db.rate_hit(f"otp-ip:{ip}", s.settings.otp_per_ip_per_hour, 3600):
+            raise HTTPException(429, {"code": "too_many_codes",
+                                      "message_en": "Too many codes requested. Try again in an hour.",
+                                      "message_sw": "Umeomba namba nyingi mno. Jaribu tena baada ya saa moja."})
+        if not s.db.rate_hit("otp-global", s.settings.otp_daily_cap, 86400):
+            log.error("daily SMS cap of %s reached; sign-in codes paused", s.settings.otp_daily_cap)
+            raise HTTPException(503, "sign-in is temporarily unavailable, try again later")
         code = f"{secrets.randbelow(1_000_000):06d}"
         if not s.db.otp_issue(phone, code, s.settings.otp_ttl_minutes, s.settings.otp_max_sends_per_hour):
             raise HTTPException(429, {"code": "too_many_codes",
@@ -178,7 +188,11 @@ def create_app(services: Services | None = None) -> FastAPI:
             return {"token": s.db.rotate_token(user["id"]), "user_id": user["id"], "is_new": False}
         native = body.native_lang if body.native_lang in LANGUAGES else "sw"
         level = body.level if body.level in LEVELS else "A2"
-        user_id, token = s.db.create_user(phone, body.name.strip(), native, body.country.upper(), level)
+        try:
+            user_id, token = s.db.create_user(phone, body.name.strip(), native, body.country.upper(), level)
+        except sqlite3.IntegrityError:  # created by a parallel request a moment ago
+            user = s.db.user_by_phone(phone)
+            return {"token": s.db.rotate_token(user["id"]), "user_id": user["id"], "is_new": False}
         return {"token": token, "user_id": user_id, "is_new": True}
 
     def _me(user_id: int) -> dict:
@@ -293,7 +307,12 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.post("/v1/support")
     def support(body: SupportMsg, user=Depends(current_user)):
-        return S().support.answer(body.message, user["phone"])
+        s = S()
+        if not s.db.rate_hit(f"support:{user['id']}", s.settings.support_per_day, 86400):
+            raise HTTPException(429, {"code": "support_limit",
+                                      "message_en": "You've sent a lot of messages today. We'll reply soon.",
+                                      "message_sw": "Umetuma ujumbe mwingi leo. Tutakujibu hivi karibuni."})
+        return s.support.answer(body.message, user["phone"])
 
     @app.get("/v1/admin/report", dependencies=[Depends(admin)])
     def admin_report(advice: bool = False):

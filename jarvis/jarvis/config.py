@@ -46,6 +46,10 @@ class Settings:
     otp_ttl_minutes: int = field(default_factory=lambda: _int("JARVIS_OTP_TTL_MIN", 10))
     otp_max_sends_per_hour: int = field(default_factory=lambda: _int("JARVIS_OTP_SENDS_PER_HOUR", 3))
     otp_max_attempts: int = field(default_factory=lambda: _int("JARVIS_OTP_ATTEMPTS", 5))
+    # Spend guards against SMS-pumping fraud: per network address per hour, and across everyone per day.
+    otp_per_ip_per_hour: int = field(default_factory=lambda: _int("JARVIS_OTP_PER_IP_HOUR", 10))
+    otp_daily_cap: int = field(default_factory=lambda: _int("JARVIS_OTP_DAILY_CAP", 1000))
+    support_per_day: int = field(default_factory=lambda: _int("JARVIS_SUPPORT_PER_DAY", 20))
     at_username: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_USERNAME", ""))
     at_api_key: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_API_KEY", ""))
     at_sender_id: str = field(default_factory=lambda: os.environ.get("AFRICASTALKING_SENDER_ID", ""))

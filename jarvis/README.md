@@ -88,4 +88,5 @@ receives text only, which is what keeps each conversation turn at a fraction of 
 - [ ] Open an Africa's Talking account and register a sender ID. Set `JARVIS_SMS_PROVIDER=africastalking` and send yourself a login code.
 - [ ] Register as a data controller with Tanzania's PDPC and publish a privacy policy at the URL the app links to (`PRIVACY_URL`; the default is masomo.co.tz/privacy).
 - [ ] Set a monthly spend limit on your Anthropic account. Generate and review lessons 3–12 (`python -m jarvis lessons --weeks 3-12`).
-- [ ] Check that `https://masomo.co.tz/api/week_videos?week=1` still returns the video list, or point `JARVIS_LEGACY_VIDEOS_URL` at the new location.
+- [ ] Check that `https://masomo.co.tz/api/week_videos?week=1` still returns the video list, or point `JARVIS_LEGACY_VIDEOS_URL` at the new location. That old endpoint needs no login, so anyone who finds it can list the Pro videos. Restrict it to this server's IP address, or move the videos behind signed links.
+- [ ] Before going live, confirm with AzamPay whether you can check a transaction's status through their API. If so, confirm each callback that way as well. For now a callback is trusted if it carries the secret key and the right amount.

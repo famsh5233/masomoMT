@@ -50,6 +50,15 @@ android {
         }
     }
 
+    // Refuse to build an upload bundle without the real signing key; Play rejects debug-signed apps.
+    tasks.matching { it.name == "bundleRelease" }.configureEach {
+        doFirst {
+            if (!keystorePropertiesFile.exists()) {
+                throw GradleException("android/key.properties is missing. See README, 'Release build for Google Play'.")
+            }
+        }
+    }
+
     buildTypes {
         release {
             signingConfig = if (keystorePropertiesFile.exists()) {

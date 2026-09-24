@@ -75,6 +75,11 @@ CREATE TABLE IF NOT EXISTS otps (
     window_start TEXT NOT NULL,
     sends INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS rates (
+    key TEXT PRIMARY KEY,
+    window_start TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS escalations (
     id INTEGER PRIMARY KEY,
     user_id INTEGER,
@@ -180,18 +185,34 @@ class DB:
             return True
 
     def otp_check(self, phone: str, code: str, max_attempts: int, now: datetime | None = None) -> bool:
-        """True once per issued code; wrong guesses count towards max_attempts."""
+        """True once per issued code. Every guess, right or wrong, uses one of max_attempts.
+
+        Both steps are single UPDATEs in one write transaction, so parallel requests cannot
+        get extra guesses or use the same code twice.
+        """
         now = now or utcnow()
         with self.conn() as c:
-            row = c.execute("SELECT * FROM otps WHERE phone=?", (phone,)).fetchone()
-            if not row or row["code_hash"] == "" or parse(row["expires_at"]) < now \
-                    or row["attempts"] >= max_attempts:
+            claimed = c.execute(
+                "UPDATE otps SET attempts=attempts+1 WHERE phone=? AND code_hash!='' AND expires_at>=?"
+                " AND attempts<?", (phone, iso(now), max_attempts)).rowcount
+            if not claimed:
                 return False
-            if not secrets.compare_digest(row["code_hash"], hash_token(f"{phone}:{code}")):
-                c.execute("UPDATE otps SET attempts=attempts+1 WHERE phone=?", (phone,))
-                return False
-            c.execute("UPDATE otps SET code_hash='' WHERE phone=?", (phone,))
-            return True
+            used = c.execute("UPDATE otps SET code_hash='' WHERE phone=? AND code_hash=?",
+                             (phone, hash_token(f"{phone}:{code}"))).rowcount
+            return used == 1
+
+    # ---------- rate limits ----------
+    def rate_hit(self, key: str, limit: int, window_seconds: int, now: datetime | None = None) -> bool:
+        """Counts one event for key. False (and not counted) once limit is reached in the window."""
+        now = now or utcnow()
+        cutoff = iso(now - timedelta(seconds=window_seconds))
+        with self.conn() as c:
+            c.execute(
+                "INSERT INTO rates(key,window_start,count) VALUES(?,?,0) ON CONFLICT(key) DO UPDATE SET"
+                " count=CASE WHEN window_start<? THEN 0 ELSE count END,"
+                " window_start=CASE WHEN window_start<? THEN excluded.window_start ELSE window_start END",
+                (key, iso(now), cutoff, cutoff))
+            return c.execute("UPDATE rates SET count=count+1 WHERE key=? AND count<?", (key, limit)).rowcount == 1
 
     def set_level(self, user_id: int, level: str) -> None:
         with self.conn() as c:
@@ -219,10 +240,15 @@ class DB:
                               (iso(expires_at), existing["id"]))
                     return c.execute("SELECT * FROM subscriptions WHERE id=?", (existing["id"],)).fetchone()
                 return existing
-            last = c.execute("SELECT MAX(expires_at) m FROM subscriptions WHERE user_id=?",
-                             (user_id,)).fetchone()["m"]
-            start = max(now, parse(last)) if last else now
-            end = expires_at or (start + timedelta(days=days))
+            if expires_at is not None:
+                # Store subscriptions (Google Play) run from now until the store's expiry date.
+                start, end = now, expires_at
+            else:
+                # Prepaid mobile-money time stacks after any other prepaid time still remaining.
+                last = c.execute("SELECT MAX(expires_at) m FROM subscriptions WHERE user_id=? AND channel!='play'",
+                                 (user_id,)).fetchone()["m"]
+                start = max(now, parse(last)) if last else now
+                end = start + timedelta(days=days)
             cur = c.execute(
                 "INSERT INTO subscriptions(user_id,plan,channel,starts_at,expires_at,source_ref,"
                 "usd_net_monthly,created_at) VALUES(?,?,?,?,?,?,?,?)",
@@ -289,17 +315,31 @@ class DB:
         with self.conn() as c:
             return c.execute("SELECT * FROM usage WHERE user_id=? AND day=?", (user_id, day)).fetchone()
 
+    def reserve_turn(self, user_id: int, limit: int, day: str | None = None) -> bool:
+        """Atomically takes one of today's turns. False when the limit is already used."""
+        day = day or utcnow().date().isoformat()
+        with self.conn() as c:
+            c.execute("INSERT OR IGNORE INTO usage(user_id,day) VALUES(?,?)", (user_id, day))
+            return c.execute("UPDATE usage SET turns=turns+1 WHERE user_id=? AND day=? AND turns<?",
+                             (user_id, day, limit)).rowcount == 1
+
+    def refund_turn(self, user_id: int, day: str | None = None) -> None:
+        day = day or utcnow().date().isoformat()
+        with self.conn() as c:
+            c.execute("UPDATE usage SET turns=MAX(turns-1,0) WHERE user_id=? AND day=?", (user_id, day))
+
     def add_usage(self, user_id: int, input_tokens: int, output_tokens: int, cost_usd: float,
-                  day: str | None = None) -> None:
+                  day: str | None = None, turns: int = 0) -> None:
+        """Records AI tokens and cost. Tutor turns are counted by reserve_turn, not here."""
         day = day or utcnow().date().isoformat()
         with self.conn() as c:
             c.execute(
-                "INSERT INTO usage(user_id,day,turns,input_tokens,output_tokens,cost_usd) VALUES(?,?,1,?,?,?)"
-                " ON CONFLICT(user_id,day) DO UPDATE SET turns=turns+1,"
+                "INSERT INTO usage(user_id,day,turns,input_tokens,output_tokens,cost_usd) VALUES(?,?,?,?,?,?)"
+                " ON CONFLICT(user_id,day) DO UPDATE SET turns=turns+excluded.turns,"
                 " input_tokens=input_tokens+excluded.input_tokens,"
                 " output_tokens=output_tokens+excluded.output_tokens,"
                 " cost_usd=cost_usd+excluded.cost_usd",
-                (user_id, day, input_tokens, output_tokens, cost_usd))
+                (user_id, day, turns, input_tokens, output_tokens, cost_usd))
 
     def ai_cost_since(self, day: str) -> float:
         with self.conn() as c:

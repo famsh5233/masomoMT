@@ -373,3 +373,124 @@ def test_phone_normalization():
     assert normalize_phone("00255712345678") == "255712345678"
     with pytest.raises(PhoneError):
         normalize_phone("abc")
+
+
+# ---------- regression tests for the security review ----------
+
+def test_otp_parallel_guesses_limited_and_code_single_use(settings):
+    import threading
+    db = DB(settings.db_path)
+    db.otp_issue("255754000010", "123456", 10, 3)
+    results = []
+
+    def guess(code):
+        results.append(db.otp_check("255754000010", code, 5))
+
+    threads = [threading.Thread(target=guess, args=(f"{i:06d}",)) for i in range(40)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    with db.conn() as c:
+        attempts = c.execute("SELECT attempts FROM otps WHERE phone='255754000010'").fetchone()["attempts"]
+    assert attempts == 5 and not any(results)
+
+    db.otp_issue("255754000011", "654321", 10, 3)
+    results.clear()
+    threads = [threading.Thread(target=lambda: results.append(db.otp_check("255754000011", "654321", 5)))
+               for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert results.count(True) == 1
+
+
+def test_tutor_limit_holds_under_parallel_requests(settings):
+    import threading
+    import time as _time
+
+    def slow_tutor(messages):
+        _time.sleep(0.05)
+        return tutor_resp(messages)
+
+    svc = build_services(settings, llm=FakeLLM({**FAKE, "tutor_turn": slow_tutor}))
+    uid, _ = svc.db.create_user("255754000012")
+    ok, limited = [], []
+
+    def chat():
+        try:
+            svc.tutor.chat(uid, "hello")
+            ok.append(1)
+        except Exception as e:  # noqa: BLE001
+            limited.append(type(e).__name__)
+
+    threads = [threading.Thread(target=chat) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(ok) == settings.free_turns_per_day and set(limited) == {"LimitReached"}
+
+
+def test_failed_model_call_refunds_the_turn(settings):
+    def boom(messages):
+        raise RuntimeError("model down")
+
+    svc = build_services(settings, llm=FakeLLM({**FAKE, "tutor_turn": boom}))
+    uid, _ = svc.db.create_user("255754000013")
+    with pytest.raises(RuntimeError):
+        svc.tutor.chat(uid, "hello")
+    assert svc.tutor.turns_left(uid) == settings.free_turns_per_day
+
+
+def test_play_after_prepaid_time_is_active_now_and_mobile_money_blocked_during_play(settings):
+    db = DB(settings.db_path)
+    uid, _ = db.create_user("255754000014")
+    q = PLANS["tz_quarter"]
+    db.grant(uid, q.code, q.channel, q.days, "mm-1", q.usd_net_monthly)
+    play_expiry = utcnow() + timedelta(days=30)
+    sub = db.grant(uid, "pro_monthly", "play", 30, "play:tok", 4.24, expires_at=play_expiry)
+    assert sub["starts_at"] <= db.active_subscription(uid)["expires_at"]
+    assert utcnow() >= datetime_from(sub["starts_at"]) - timedelta(seconds=1)
+
+    uid2, _ = db.create_user("255754000015")
+    db.grant(uid2, "pro_monthly", "play", 30, "play:tok2", 4.24, expires_at=play_expiry)
+    az = azampay_with(settings, db, ok_handler)
+    with pytest.raises(PaymentError, match="Google Play"):
+        az.start_checkout(uid2, "tz_month", "mpesa", "0754000001")
+
+
+def datetime_from(ts):
+    from jarvis.db import parse
+    return parse(ts)
+
+
+def test_sms_abuse_guards(client, settings):
+    c, svc = client
+    # Not a real Tanzanian mobile number.
+    assert c.post("/v1/auth/start", json={"phone": "+2551234567", "country": "TZ"}).status_code == 422
+    # Per-address limit: 10 codes an hour from one address, across different numbers.
+    codes = [c.post("/v1/auth/start", json={"phone": f"07540001{i:02d}"}).status_code for i in range(11)]
+    assert codes[:10] == [200] * 10 and codes[10] == 429
+
+    capped = build_services(replace(settings, otp_daily_cap=2, db_path=settings.db_path + "2"), llm=FakeLLM(FAKE))
+    cc = TestClient(create_app(capped))
+    assert [cc.post("/v1/auth/start", json={"phone": f"07540002{i:02d}"}).status_code for i in range(3)] == \
+        [200, 200, 503]
+
+
+def test_support_is_rate_limited_and_costed(client, settings):
+    c, svc = client
+    h = signup(c)
+    for _ in range(settings.support_per_day):
+        assert c.post("/v1/support", json={"message": "hi"}, headers=h).status_code == 200
+    assert c.post("/v1/support", json={"message": "hi"}, headers=h).status_code == 429
+    uid = svc.db.user_by_phone("255754000001")["id"]
+    assert svc.db.usage_today(uid)["cost_usd"] > 0 and svc.db.usage_today(uid)["turns"] == 0
+
+
+def test_non_ascii_secrets_do_not_crash(client, settings):
+    c, svc = client
+    assert c.get("/v1/admin/report", headers={"X-Admin-Key": "ключ".encode()}).status_code == 403
+    assert svc.azampay.handle_callback({"utilityref": "x"}, "ключ")["status"] == "unauthorized"

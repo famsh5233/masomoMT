@@ -79,13 +79,16 @@ class _LessonsScreenState extends State<LessonsScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.deep),
                       ),
                     ),
-                    title: Text(s.week(l.week), style: const TextStyle(fontSize: 13, color: Brand.muted)),
+                    title: Text(
+                      l.published ? s.week(l.week) : '${s.week(l.week)} · ${s.comingSoon}',
+                      style: const TextStyle(fontSize: 13, color: Brand.muted),
+                    ),
                     subtitle: Text(
                       l.displayTitle,
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Brand.ink),
                     ),
                     trailing: !l.published
-                        ? Text(s.comingSoon, style: const TextStyle(fontSize: 12, color: Brand.muted))
+                        ? const Icon(Icons.schedule_rounded, color: Brand.muted)
                         : l.locked
                         ? const ProBadge()
                         : const Icon(Icons.chevron_right_rounded),

@@ -66,8 +66,10 @@ class SupportAgent:
                                                   f"<customer_message>\n{message[:2000]}\n</customer_message>"}],
             tool_name="support_reply", schema=SCHEMA, max_tokens=600)
         data = result.data
+        user = self.db.user_by_phone(phone) if phone else None
+        if user:
+            self.db.add_usage(user["id"], result.input_tokens, result.output_tokens, result.cost_usd)
         if data["escalate"]:
-            user = self.db.user_by_phone(phone) if phone else None
             data["ticket_id"] = self.db.escalate(phone or "unknown", data["reason"] or message[:500],
                                                  user["id"] if user else None)
         return data

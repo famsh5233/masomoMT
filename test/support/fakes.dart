@@ -213,11 +213,25 @@ class FakeVoice implements Voice {
   @override
   Future<void> stopListening() async => _listening = false;
 
+  int cancels = 0;
+  int speechStops = 0;
+
+  @override
+  Future<void> cancelListening() async {
+    cancels++;
+    _listening = false;
+  }
+
   @override
   Future<void> speak(String text) async => spoken.add(text);
 
   @override
-  Future<void> stopSpeaking() async {}
+  Future<void> stopSpeaking() async => speechStops++;
 }
 
-class FakeBilling extends NoBilling {}
+class FakeBilling extends NoBilling {
+  int restores = 0;
+
+  @override
+  Future<void> restore() async => restores++;
+}

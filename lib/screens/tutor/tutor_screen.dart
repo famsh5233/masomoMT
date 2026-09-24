@@ -22,10 +22,11 @@ class _Entry {
 }
 
 class TutorScreen extends StatefulWidget {
-  const TutorScreen({super.key, this.initialScenario = 'free_talk', this.standalone = false});
+  const TutorScreen({super.key, this.initialScenario = 'free_talk', this.standalone = false, this.active = true});
 
   final String initialScenario;
   final bool standalone; // opened from a lesson, with its own back button
+  final bool active; // false while another tab is showing
 
   @override
   State<TutorScreen> createState() => _TutorScreenState();
@@ -41,8 +42,36 @@ class _TutorScreenState extends State<TutorScreen> {
   String _partial = '';
   bool _limitReached = false;
 
+  late final Voice _voice;
+
+  @override
+  void initState() {
+    super.initState();
+    _voice = context.read<Voice>(); // kept for dispose(), where lookups are not allowed
+  }
+
+  @override
+  void didUpdateWidget(TutorScreen old) {
+    super.didUpdateWidget(old);
+    if (old.active && !widget.active) _silence();
+  }
+
+  /// Stops the mic without sending what was half-heard, and stops Mwalimu talking.
+  void _silence() {
+    if (_listening) {
+      _voice.cancelListening();
+      setState(() {
+        _listening = false;
+        _partial = '';
+      });
+    }
+    _voice.stopSpeaking();
+  }
+
   @override
   void dispose() {
+    if (_listening) _voice.cancelListening();
+    _voice.stopSpeaking();
     _input.dispose();
     _scroll.dispose();
     super.dispose();

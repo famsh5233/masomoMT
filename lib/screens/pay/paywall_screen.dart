@@ -93,7 +93,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
       }
     } on ApiException catch (e) {
       if (!mounted) return;
-      if (!handleAuthError(context, e)) setState(() => _error = e.detail ?? errorMessage(s, e));
+      if (handleAuthError(context, e)) return;
+      // Show a plain message; the server's technical detail (e.g. the gateway's reply) stays in its logs.
+      final badNumber = e.statusCode == 400 && (e.detail ?? '').contains('mobile number');
+      setState(() => _error = badNumber ? s.badPhone : (e.statusCode == 400 ? s.payFailed : errorMessage(s, e)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
